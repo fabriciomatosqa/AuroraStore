@@ -22,7 +22,7 @@ jobs:
 
       - name: Build PKG with the official OpenOrbis container
         run: |
-          docker run --rm \
+          docker run --rm --user 0 \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             openorbisofficial/toolchain:latest \
