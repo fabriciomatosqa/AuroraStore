@@ -43,6 +43,12 @@ jobs:
           RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
           test -n "$RIGHT_SPRX"
           cp "$RIGHT_SPRX" sce_sys/about/right.sprx
+          mkdir -p sce_module
+          LIBC_PRX="$(find "$OO_PS4_TOOLCHAIN" -path '*/sce_module/libc.prx' -print -quit)"
+          FIOS_PRX="$(find "$OO_PS4_TOOLCHAIN" -path '*/sce_module/libSceFios2.prx' -print -quit)"
+          test -n "$LIBC_PRX" && test -n "$FIOS_PRX"
+          cp "$LIBC_PRX" sce_module/libc.prx
+          cp "$FIOS_PRX" sce_module/libSceFios2.prx
 
       - name: Compile and package
         run: make CC=clang CXX=clang++ LD=ld.lld
