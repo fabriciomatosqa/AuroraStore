@@ -10,30 +10,42 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate package icon
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld make curl libicu-dev
+          # PkgTool.Core from this SDK release requires OpenSSL 1.1.
+          base="http://security.ubuntu.com/ubuntu/pool/main/o/openssl/"
+          deb="libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb"
+          curl -fsSL "${base}${deb}" -o /tmp/libssl1.1.deb
+          sudo apt-get install -y /tmp/libssl1.1.deb
+
+      - name: Install OpenOrbis v0.5.4
+        run: |
+          curl -fL https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz -o /tmp/openorbis.tar.gz
+          mkdir -p "$HOME/openorbis"
+          tar -xzf /tmp/openorbis.tar.gz -C "$HOME/openorbis"
+          OO_ROOT="$(dirname "$(find "$HOME/openorbis" -name link.x -print -quit)")"
+          test -n "$OO_ROOT"
+          echo "OO_PS4_TOOLCHAIN=$OO_ROOT" >> "$GITHUB_ENV"
+          echo "$OO_ROOT/bin/linux" >> "$GITHUB_PATH"
+          echo "Using toolchain at $OO_ROOT"
+
+      - name: Prepare package resources
         run: |
           mkdir -p sce_sys/about
           python3 tools/generate_icon.py
+          RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
+          test -n "$RIGHT_SPRX"
+          cp "$RIGHT_SPRX" sce_sys/about/right.sprx
 
-      - name: Build PKG with the official OpenOrbis container
-        run: |
-          docker run --rm --user 0 \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
-            openorbisofficial/toolchain:latest \
-            bash -lc '
-              set -eux
-              echo "Toolchain: $OO_PS4_TOOLCHAIN"
-              RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
-              test -n "$RIGHT_SPRX"
-              cp "$RIGHT_SPRX" sce_sys/about/right.sprx
-              make
-            '
+      - name: Compile and package
+        run: make CC=clang CXX=clang++ LD=ld.lld
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
