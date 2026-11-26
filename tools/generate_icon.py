@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
-"""Generate a simple 512x512 RGB PNG icon without third-party dependencies."""
-import struct
-import zlib
-
-W = H = 512
-rows = []
-for y in range(H):
-    row = bytearray([0])
-    for x in range(W):
-        t = (x + y) / (W + H - 2)
-        r, g, b = int(12 + 24*t), int(18 + 18*t), int(42 + 70*t)
-        inside = (180 <= x <= 332 and 130 <= y <= 382 and
-                  abs(x - 256) < (y - 105) * 0.62 and
-                  not (250 <= y <= 295 and 210 <= x <= 302))
-        if inside:
-            r, g, b = 65, 210, 255
-        row.extend((r, g, b))
-    rows.append(bytes(row))
-
-def chunk(kind, data):
-    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
-
-raw = b"".join(rows)
-png = (b"\x89PNG\r\n\x1a\n" +
-       chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0)) +
-       chunk(b"IDAT", zlib.compress(raw, 9)) +
-       chunk(b"IEND", b""))
-with open("sce_sys/icon0.png", "wb") as f:
-    f.write(png)
+"""Render Aurora crystal A emblem as an opaque 512x512 RGB PS4 icon."""
+from PIL import Image, ImageDraw, ImageFilter
+import os
+S=512
+base=Image.new("RGBA",(S,S),(0,0,0,255))
+outer=[(256,42),(486,455),(26,455)]
+halo=Image.new("RGBA",(S,S),(0,0,0,0)); h=ImageDraw.Draw(halo)
+for w,c in [(44,(0,55,255,35)),(28,(0,130,255,55)),(14,(0,230,255,80)),(6,(130,70,255,110))]:
+ h.line(outer+[outer[0]],fill=c,width=w,joint="curve")
+base=Image.alpha_composite(base,halo.filter(ImageFilter.GaussianBlur(17)))
+d=ImageDraw.Draw(base)
+d.polygon([(256,54),(256,214),(45,444)],fill=(20,93,245,255))
+d.polygon([(256,54),(467,444),(256,214)],fill=(105,70,225,255))
+d.polygon([(45,444),(256,214),(256,390)],fill=(0,90,220,255))
+d.polygon([(256,214),(467,444),(256,390)],fill=(0,185,190,255))
+d.polygon([(256,212),(326,335),(382,389),(256,364),(130,389),(186,335)],fill=(0,38,150,255))
+d.polygon([(256,300),(186,335),(130,389),(256,364)],fill=(0,115,225,255))
+d.polygon([(256,300),(326,335),(382,389),(256,364)],fill=(0,205,205,255))
+d.polygon([(256,212),(256,300),(186,335)],fill=(12,54,190,255))
+d.polygon([(256,212),(326,335),(256,300)],fill=(8,95,205,255))
+d.polygon([(256,322),(349,394),(256,377),(163,394)],fill=(0,0,0,255))
+edge=Image.new("RGBA",(S,S),(0,0,0,0)); e=ImageDraw.Draw(edge)
+e.line(outer+[outer[0]],fill=(95,245,255,255),width=2,joint="curve")
+base=Image.alpha_composite(base,edge.filter(ImageFilter.GaussianBlur(2)))
+d=ImageDraw.Draw(base)
+d.line([(256,54),(256,214),(45,444)],fill=(115,150,255,210),width=2)
+d.line([(256,54),(467,444)],fill=(120,245,255,220),width=2)
+d.line([(45,444),(256,390),(467,444)],fill=(0,230,255,180),width=2)
+os.makedirs("sce_sys",exist_ok=True)
+icon=base.convert("RGB")
+icon.save("sce_sys/icon0.png",format="PNG",optimize=True)
+assert icon.size==(512,512) and icon.mode=="RGB"
