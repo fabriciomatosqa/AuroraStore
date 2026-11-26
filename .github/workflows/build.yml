@@ -15,18 +15,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install OpenOrbis toolchain and build PKG
-        uses: OpenOrbis/toolchain-action@main
-        with:
-          version: v0.5.4
-          command: |
-            set -eux
-            mkdir -p sce_sys/about
-            python3 tools/generate_icon.py
-            RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx | head -n 1)"
-            test -n "$RIGHT_SPRX"
-            cp "$RIGHT_SPRX" sce_sys/about/right.sprx
-            make
+      - name: Generate package icon
+        run: |
+          mkdir -p sce_sys/about
+          python3 tools/generate_icon.py
+
+      - name: Build PKG with the official OpenOrbis container
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            openorbisofficial/toolchain:latest \
+            bash -lc '
+              set -eux
+              echo "Toolchain: $OO_PS4_TOOLCHAIN"
+              RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
+              test -n "$RIGHT_SPRX"
+              cp "$RIGHT_SPRX" sce_sys/about/right.sprx
+              make
+            '
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
