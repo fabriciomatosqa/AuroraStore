@@ -26,7 +26,7 @@ $(INTDIR)/main.o: $(SRC)/main.cpp | $(INTDIR)
 
 eboot.bin: $(OBJS)
 	$(LD) $(OBJS) -o $(INTDIR)/aurora.elf $(LDFLAGS)
-	$(PKGDIR)/create-fself -in=$(INTDIR)/aurora.elf -out=eboot.bin --eboot "eboot.bin" --paid 0x3800000000000011
+	$(PKGDIR)/create-fself -in=$(INTDIR)/aurora.elf -out=$(INTDIR)/aurora.oelf --eboot=eboot.bin --paid 0x3800000000000011
 	test -s eboot.bin
 
 sce_sys/param.sfo: Makefile
