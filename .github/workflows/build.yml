@@ -1,0 +1,37 @@
+name: Build Aurora Store PS4
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OpenOrbis toolchain and build PKG
+        uses: OpenOrbis/toolchain-action@main
+        with:
+          version: v0.5.4
+          command: |
+            set -eux
+            mkdir -p sce_sys/about
+            python3 tools/generate_icon.py
+            RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx | head -n 1)"
+            test -n "$RIGHT_SPRX"
+            cp "$RIGHT_SPRX" sce_sys/about/right.sprx
+            make
+
+      - name: Upload PKG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AuroraStore-PS4
+          path: "*.pkg"
+          if-no-files-found: error
+          retention-days: 30
