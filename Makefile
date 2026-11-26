@@ -42,8 +42,8 @@ sce_sys/param.sfo: Makefile
 	$(PKGDIR)/PkgTool.Core sfo_setentry $@ TITLE_ID --type Utf8 --maxsize 12 --value '$(TITLE_ID)'
 	$(PKGDIR)/PkgTool.Core sfo_setentry $@ VERSION --type Utf8 --maxsize 8 --value '$(VERSION)'
 
-pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png catalogs/homebrew.json
-	$(PKGDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"
+pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png
+	$(PKGDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png"
 
 $(CONTENT_ID).pkg: pkg.gp4
 	$(PKGDIR)/PkgTool.Core pkg_build $< .
