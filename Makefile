@@ -1,5 +1,5 @@
 TITLE       := Aurora Store - PS4
-VERSION     := 01.01
+VERSION     := 01.02
 TITLE_ID    := AURR00001
 CONTENT_ID  := IV0000-AURR00001_00-AURORASTORE00001
 
@@ -16,7 +16,7 @@ CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c -isysro
 CXXFLAGS    := $(CFLAGS) -isystem $(TOOLCHAIN)/include/c++/v1
 LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ $(TOOLCHAIN)/lib/crt1.o
 
-all: $(CONTENT_ID).pkg
+all: clean $(CONTENT_ID).pkg
 
 $(INTDIR):
 	mkdir -p $(INTDIR)
