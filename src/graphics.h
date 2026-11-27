@@ -22,6 +22,7 @@ class Scene2D
 {
 #ifdef GRAPHICS_USES_FONT
 	FT_Library ftLib;
+	bool fontReady;
 #endif
 	
 	int width;
@@ -75,3 +76,5 @@ public:
 };
 
 #endif
+
+
