@@ -196,7 +196,7 @@ void drawHero(Scene2D* scene, const StoreState& state) {
     drawText(scene, "PROJETOS DA COMUNIDADE, EM UMA EXPERIENCIA", 116, 410, 3, muted);
     drawText(scene, "FEITA PARA NAVEGAR PELO CONTROLE.", 116, 442, 3, muted);
 
-    const Color button = state.focusCards ? panelHi : {26, 68, 91};
+    const Color button = state.focusCards ? panelHi : Color{26, 68, 91};
     scene->DrawRectangle(112, 490, 310, 56, button);
     scene->DrawRectangle(112, 490, 4, 56, state.focusCards ? muted : cyan);
     drawText(scene, "X", 132, 508, 3, cyan);
@@ -266,7 +266,7 @@ void drawFooter(Scene2D* scene) {
     drawText(scene, "D-PAD  NAVEGAR", 378, 1012, 2, muted);
     drawText(scene, "X  SELECIONAR", 674, 1012, 2, muted);
     drawText(scene, "O  VOLTAR", 946, 1012, 2, muted);
-    drawText(scene, "AURORA STORE  /  01.04", 1540, 1012, 2, {91, 111, 142});
+    drawText(scene, "AURORA STORE  /  01.05", 1540, 1012, 2, {91, 111, 142});
 }
 
 void drawDialog(Scene2D* scene) {
@@ -314,7 +314,7 @@ void cyclePage(StoreState& state, int direction) {
 
 int main(void) {
     setvbuf(stdout, nullptr, _IONBF, 0);
-    DEBUGLOG << "Aurora Store frontend 01.04";
+    DEBUGLOG << "Aurora Store frontend 01.05";
 
     Scene2D* screen = new Scene2D(kWidth, kHeight, 4);
     if (!screen->Init(0x1000000, 2)) {
