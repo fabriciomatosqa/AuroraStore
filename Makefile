@@ -1,5 +1,5 @@
 TITLE       := Aurora Store - PS4
-VERSION     := 01.05
+VERSION     := 01.06
 TITLE_ID    := AURR00001
 CONTENT_ID  := IV0000-AURR00001_00-AURORASTORE00001
 
@@ -10,18 +10,25 @@ LD          := ld.lld
 PKGDIR      := $(TOOLCHAIN)/bin/linux
 INTDIR      := build
 SRC         := src
+FONT_ASSET  := assets/fonts/Gontserrat-Regular.ttf
 OBJS        := $(INTDIR)/main.o $(INTDIR)/graphics.o
 
 CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
-CXXFLAGS    := $(CFLAGS) -isystem $(TOOLCHAIN)/include/c++/v1
-LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ -lSceVideoOut -lScePad -lSceUserService $(TOOLCHAIN)/lib/crt1.o
+CXXFLAGS    := $(CFLAGS) -isystem $(TOOLCHAIN)/include/c++/v1 -DGRAPHICS_USES_FONT
+LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ -lSceVideoOut -lScePad -lSceUserService -lSceSysmodule -lSceFreeType $(TOOLCHAIN)/lib/crt1.o
 
 all: clean $(CONTENT_ID).pkg
 
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: $(SRC)/main.cpp $(SRC)/graphics.h $(SRC)/log.h | $(INTDIR)
+$(SRC)/catalog_data.h: catalogs/homebrew.json tools/generate_catalog.py
+	python3 tools/generate_catalog.py
+
+$(FONT_ASSET): assets/fonts/Gontserrat-Regular.ttf.b64 tools/prepare_font.py
+	python3 tools/prepare_font.py
+
+$(INTDIR)/main.o: $(SRC)/main.cpp $(SRC)/graphics.h $(SRC)/log.h $(SRC)/catalog_data.h | $(INTDIR)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 $(INTDIR)/graphics.o: $(SRC)/graphics.cpp $(SRC)/graphics.h $(SRC)/log.h | $(INTDIR)
@@ -45,8 +52,8 @@ sce_sys/param.sfo: Makefile
 	$(PKGDIR)/PkgTool.Core sfo_setentry $@ TITLE_ID --type Utf8 --maxsize 12 --value '$(TITLE_ID)'
 	$(PKGDIR)/PkgTool.Core sfo_setentry $@ VERSION --type Utf8 --maxsize 8 --value '$(VERSION)'
 
-pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_module/libc.prx sce_module/libSceFios2.prx
-	$(PKGDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_module/libc.prx sce_module/libSceFios2.prx"
+pkg.gp4: eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_module/libc.prx sce_module/libSceFios2.prx $(FONT_ASSET) assets/fonts/OFL.txt
+	$(PKGDIR)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_module/libc.prx sce_module/libSceFios2.prx $(FONT_ASSET) assets/fonts/OFL.txt"
 
 $(CONTENT_ID).pkg: pkg.gp4
 	$(PKGDIR)/PkgTool.Core pkg_build $< .
@@ -55,3 +62,5 @@ clean:
 	rm -rf $(INTDIR) eboot.bin pkg.gp4 sce_sys/param.sfo *.pkg
 
 .PHONY: all clean
+
+
