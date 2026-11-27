@@ -721,6 +721,7 @@ void downloadPackageWorker(int itemIndex) {
     int templateId = -1;
     int connectionId = -1;
     int requestId = -1;
+    int32_t sendResult = 0;
     FILE* output = nullptr;
     uint8_t* buffer = nullptr;
     bool success = false;
@@ -791,7 +792,7 @@ void downloadPackageWorker(int itemIndex) {
         errorCode = 11;
         goto download_cleanup;
     }
-    const int32_t sendResult = sceHttpSendRequest(requestId, nullptr, 0);
+    sendResult = sceHttpSendRequest(requestId, nullptr, 0);
     if (sendResult < 0) {
         captureHttpError(requestId, sendResult);
         errorCode = 12;
