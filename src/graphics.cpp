@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <math.h>
 
 #include <string>
 
@@ -19,6 +20,15 @@ Scene2D::Scene2D(int w, int h, int pixelDepth)
 	this->depth = pixelDepth;
 	
 	this->frameBufferSize = this->width * this->height * this->depth;
+	this->rgbaImage = NULL;
+	this->imageWidth = 0;
+	this->imageHeight = 0;
+}
+
+Scene2D::~Scene2D()
+{
+	if (this->rgbaImage != NULL)
+		free(this->rgbaImage);
 }
 
 bool Scene2D::Init(size_t memSize, int numFrameBuffers)
@@ -156,7 +166,7 @@ void Scene2D::deallocateVideoMem()
 	this->directMemAllocationSize = 0;
 	
 	// Free the frame buffer array
-	delete this->frameBuffers;
+	delete[] this->frameBuffers;
 	this->frameBuffers = 0;
 }
 
@@ -229,6 +239,10 @@ void Scene2D::FrameBufferFill(Color color)
 
 void Scene2D::DrawPixel(int x, int y, Color color)
 {
+	if (x < 0 || y < 0 || x >= this->width || y >= this->height ||
+		this->frameBuffers == NULL)
+		return;
+
 	// Get pixel location based on pitch
 	int pixel = (y * this->width) + x;
 	
@@ -241,16 +255,113 @@ void Scene2D::DrawPixel(int x, int y, Color color)
 
 void Scene2D::DrawRectangle(int x, int y, int w, int h, Color color)
 {
-	int xPos, yPos;
-	
-	// Draw row-by-row, column-by-column
-	for(yPos = y; yPos < y + h; yPos++)
+	if (w <= 0 || h <= 0 || this->frameBuffers == NULL)
+		return;
+
+	// Clip once, then fill each scanline directly. Calling DrawPixel for each
+	// point made a full 1080p redraw take seconds on the console.
+	const int left = x < 0 ? 0 : x;
+	const int top = y < 0 ? 0 : y;
+	const int rightEdge = x + w > this->width ? this->width : x + w;
+	const int bottomEdge = y + h > this->height ? this->height : y + h;
+	if (left >= rightEdge || top >= bottomEdge)
+		return;
+
+	const uint32_t encodedColor = 0x80000000u | (static_cast<uint32_t>(color.r) << 16) |
+		(static_cast<uint32_t>(color.g) << 8) | color.b;
+	uint32_t *pixels = reinterpret_cast<uint32_t *>(this->frameBuffers[this->activeFrameBufferIdx]);
+	for (int row = top; row < bottomEdge; ++row)
 	{
-		for(xPos = x; xPos < x + w; xPos++)
+		uint32_t *scanline = pixels + row * this->width + left;
+		for (int column = 0; column < rightEdge - left; ++column)
+			scanline[column] = encodedColor;
+	}
+}
+
+bool Scene2D::LoadRgbaImage(const char *path, int imageW, int imageH)
+{
+	if (path == NULL || imageW <= 0 || imageH <= 0)
+		return false;
+	FILE *file = fopen(path, "rb");
+	if (file == NULL)
+		return false;
+	const size_t byteCount = static_cast<size_t>(imageW) * imageH * 4;
+	uint8_t *pixels = static_cast<uint8_t *>(malloc(byteCount));
+	if (pixels == NULL)
+	{
+		fclose(file);
+		return false;
+	}
+	const size_t readCount = fread(pixels, 1, byteCount, file);
+	const int extra = fgetc(file);
+	fclose(file);
+	if (readCount != byteCount || extra != EOF)
+	{
+		free(pixels);
+		return false;
+	}
+	if (this->rgbaImage != NULL)
+		free(this->rgbaImage);
+	this->rgbaImage = pixels;
+	this->imageWidth = imageW;
+	this->imageHeight = imageH;
+	return true;
+}
+
+bool Scene2D::DrawRgbaImage(int x, int y, int w, int h)
+{
+	if (this->rgbaImage == NULL || w <= 0 || h <= 0)
+		return false;
+	const int left = x < 0 ? 0 : x;
+	const int top = y < 0 ? 0 : y;
+	const int rightEdge = x + w > this->width ? this->width : x + w;
+	const int bottomEdge = y + h > this->height ? this->height : y + h;
+	if (left >= rightEdge || top >= bottomEdge)
+		return true;
+
+	uint32_t *frame = reinterpret_cast<uint32_t *>(this->frameBuffers[this->activeFrameBufferIdx]);
+	for (int targetY = top; targetY < bottomEdge; ++targetY)
+	{
+		float sourceY = ((targetY - y + 0.5f) * this->imageHeight / h) - 0.5f;
+		int y0 = static_cast<int>(floor(sourceY));
+		float fy = sourceY - y0;
+		if (y0 < 0) { y0 = 0; fy = 0.0f; }
+		int y1 = y0 + 1;
+		if (y1 >= this->imageHeight) { y1 = this->imageHeight - 1; fy = 0.0f; }
+		for (int targetX = left; targetX < rightEdge; ++targetX)
 		{
-			DrawPixel(xPos, yPos, color);
+			float sourceX = ((targetX - x + 0.5f) * this->imageWidth / w) - 0.5f;
+			int x0 = static_cast<int>(floor(sourceX));
+			float fx = sourceX - x0;
+			if (x0 < 0) { x0 = 0; fx = 0.0f; }
+			int x1 = x0 + 1;
+			if (x1 >= this->imageWidth) { x1 = this->imageWidth - 1; fx = 0.0f; }
+
+			const size_t p00 = (static_cast<size_t>(y0) * this->imageWidth + x0) * 4;
+			const size_t p10 = (static_cast<size_t>(y0) * this->imageWidth + x1) * 4;
+			const size_t p01 = (static_cast<size_t>(y1) * this->imageWidth + x0) * 4;
+			const size_t p11 = (static_cast<size_t>(y1) * this->imageWidth + x1) * 4;
+			float sample[4];
+			for (int channel = 0; channel < 4; ++channel)
+			{
+				const float topValue = this->rgbaImage[p00 + channel] * (1.0f - fx) + this->rgbaImage[p10 + channel] * fx;
+				const float bottomValue = this->rgbaImage[p01 + channel] * (1.0f - fx) + this->rgbaImage[p11 + channel] * fx;
+				sample[channel] = topValue * (1.0f - fy) + bottomValue * fy;
+			}
+			const uint8_t alpha = static_cast<uint8_t>(sample[3] + 0.5f);
+			if (alpha == 0)
+				continue;
+			const int pixel = targetY * this->width + targetX;
+			const uint32_t under = frame[pixel];
+			const uint8_t inverse = 255 - alpha;
+			const uint8_t r = static_cast<uint8_t>((alpha * sample[0] + inverse * ((under >> 16) & 0xff) + 127) / 255);
+			const uint8_t g = static_cast<uint8_t>((alpha * sample[1] + inverse * ((under >> 8) & 0xff) + 127) / 255);
+			const uint8_t b = static_cast<uint8_t>((alpha * sample[2] + inverse * (under & 0xff) + 127) / 255);
+			frame[pixel] = 0x80000000u | (static_cast<uint32_t>(r) << 16) |
+				(static_cast<uint32_t>(g) << 8) | b;
 		}
 	}
+	return true;
 }
 
 #ifdef GRAPHICS_USES_FONT
@@ -314,7 +425,9 @@ void Scene2D::DrawText(char *txt, FT_Face face, int startX, int startY, Color bg
 					static_cast<uint8_t>((alpha * fgColor.g + inverse * under.g + 127) / 255),
 					static_cast<uint8_t>((alpha * fgColor.b + inverse * under.b + 127) / 255)
 				};
-				this->DrawPixel(x, y, finalColor);
+				reinterpret_cast<uint32_t *>(this->frameBuffers[this->activeFrameBufferIdx])[pixel] =
+					0x80000000u | (static_cast<uint32_t>(finalColor.r) << 16) |
+					(static_cast<uint32_t>(finalColor.g) << 8) | finalColor.b;
 			}
 		}
 		xOffset += slot->advance.x >> 6;

@@ -41,12 +41,15 @@ jobs:
           mkdir -p sce_sys/about
           python3 tools/generate_icon.py
           python3 - <<'PY'
+          from pathlib import Path
           from PIL import Image
           icon = Image.open("sce_sys/icon0.png")
           assert icon.size == (512, 512), icon.size
           assert icon.mode == "RGB", icon.mode
           assert icon.format == "PNG", icon.format
-          print("Validated supplied icon: 512x512 RGB PNG")
+          logo = Path("assets/aurora-logo.rgba")
+          assert logo.stat().st_size == 256 * 256 * 4
+          print("Validated supplied icon and transparent 256x256 logo")
           PY
           RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
           test -n "$RIGHT_SPRX"
@@ -62,16 +65,17 @@ jobs:
         run: |
           make CC=clang CXX=clang++ LD=ld.lld
           test -s "IV0000-AURR00001_00-AURORASTORE00001.pkg"
-          strings sce_sys/param.sfo | grep -F "01.06"
-          test "$(strings sce_sys/param.sfo | grep -Fc "01.06")" -ge 2
+          strings sce_sys/param.sfo | grep -F "01.07"
+          test "$(strings sce_sys/param.sfo | grep -Fc "01.07")" -ge 2
           grep -q 'icon0.png' pkg.gp4
-          echo "Validated package metadata APP_VER and VERSION = 01.06; supplied icon is listed in GP4"
-          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.06.pkg"
+          grep -q 'assets/aurora-logo.rgba' pkg.gp4
+          echo "Validated package metadata, icon, and Aurora logo are listed in GP4"
+          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.07.pkg"
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AuroraStore-PS4-v01.06
-          path: "AuroraStore-PS4-v01.06.pkg"
+          name: AuroraStore-PS4-v01.07
+          path: "AuroraStore-PS4-v01.07.pkg"
           if-no-files-found: error
           retention-days: 90

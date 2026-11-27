@@ -1,10 +1,20 @@
 #include <cstdio>
 #include <cstdint>
-#include <math.h>
+#include <cstdlib>
+#include <cstring>
+#include <cerrno>
+#include <cmath>
 #include <sstream>
+#include <thread>
+#include <atomic>
+#include <sys/stat.h>
 #include <orbis/libkernel.h>
 #include <orbis/Pad.h>
 #include <orbis/UserService.h>
+#include <orbis/Http.h>
+#include <orbis/Ssl.h>
+#include <orbis/Net.h>
+#include <orbis/Sysmodule.h>
 
 #include "graphics.h"
 #include "catalog_data.h"
@@ -44,11 +54,26 @@ const uint8_t glyphs[36][7] = {
 };
 
 struct StoreState {
-    int page = 0;       // Home, games, apps, favorites
+    int page = 0;       // Home, games, apps, tools
     int card = 0;
     int focusCards = 0;
     bool dialogOpen = false;
 };
+
+enum DownloadState {
+    kDownloadIdle = 0,
+    kDownloadRunning,
+    kDownloadComplete,
+    kDownloadFailed,
+    kDownloadCancelled
+};
+
+std::atomic<int> gDownloadState(kDownloadIdle);
+std::atomic<unsigned long long> gDownloadBytes(0);
+std::atomic<unsigned long long> gDownloadTotal(0);
+std::atomic<int> gDownloadError(0);
+std::atomic<bool> gCancelDownload(false);
+int gDownloadItemIndex = -1;
 
 const Color bg = {7, 10, 21};
 const Color panel = {15, 22, 39};
@@ -70,12 +95,13 @@ const uint8_t* glyphFor(char c) {
 }
 
 int fontSizeForScale(int scale) {
-    if (scale <= 1) return 14;
-    if (scale == 2) return 19;
-    if (scale == 3) return 28;
-    if (scale == 4) return 37;
-    if (scale == 5) return 46;
-    return 64;
+    if (scale <= 1) return 18;
+    if (scale == 2) return 23;
+    if (scale == 3) return 31;
+    if (scale == 4) return 40;
+    if (scale == 5) return 49;
+    if (scale == 6) return 58;
+    return 68;
 }
 
 void drawPixelText(Scene2D* scene, const char* text, int x, int y, int scale, Color color) {
@@ -196,6 +222,7 @@ void drawLine(Scene2D* scene, int x0, int y0, int x1, int y1, Color color, int t
 }
 
 void drawLogo(Scene2D* scene, int x, int y, int size) {
+    if (scene->DrawRgbaImage(x, y, size, size)) return;
     const int cx = x + size / 2;
     drawLine(scene, cx, y, x + size, y + size, cyan, 5);
     drawLine(scene, x + size, y + size, x, y + size, violet, 5);
@@ -268,9 +295,9 @@ void drawCategoryCard(Scene2D* scene, int x, int y, int width, int index, int se
     const char* title[3] = {"JOGOS", "APLICATIVOS", "FERRAMENTAS"};
     const char* subtitle[3] = {"JOGOS HOMEBREW", "APPS COM FONTE ABERTA", "UTILIDADES PARA O PS4"};
     const Color accent = accents[index];
-    drawRoundedRect(scene, x + 3, y + 7, width, 238, 24, {4, 6, 13});
-    drawRoundedRect(scene, x, y, width, 238, 24, selected ? accents[index] : panelHi);
-    drawRoundedRect(scene, x + 2, y + 2, width - 4, 234, 22, selected ? panelHi : panel);
+    drawRoundedRect(scene, x + 2, y + 3, width - 2, 238, 22, {6, 9, 17});
+    drawRoundedRect(scene, x, y, width, 238, 22, selected ? accents[index] : panelHi);
+    drawRoundedRect(scene, x + 1, y + 1, width - 2, 236, 21, selected ? panelHi : panel);
     drawRoundedRect(scene, x + 20, y, width - 40, 3, 2, selected ? accent : panelHi);
     drawGradient(scene, x + width - 192, y + 18, 174, 126, deep[index], panel);
 
@@ -342,40 +369,41 @@ void drawCatalogPage(Scene2D* scene, const StoreState& state) {
     const int count = catalogCountForPage(state.page);
     const Color accent = toolsPage ? mint : violet;
     drawText(scene, toolsPage ? "FERRAMENTAS E UTILITARIOS" : "APPS HOMEBREW", 66, 616, 3, white);
-    drawText(scene, toolsPage ? "4 PROJETOS / GITHUB" : "5 PROJETOS / GITHUB", 1376, 622, 2, muted);
+    drawText(scene, toolsPage ? "4 PROJETOS / PKG" : "5 PROJETOS / PKG", 1376, 622, 2, muted);
 
     for (int row = 0; row < count; ++row) {
         const int itemIndex = catalogIndexForPage(state.page, row);
         if (itemIndex < 0) continue;
         const CatalogEntry& item = kCatalogItems[itemIndex];
         const int x = 64;
-        const int y = 654 + row * 58;
+        const int y = 654 + row * 61;
         const bool selected = row == state.card;
-        drawRoundedRect(scene, x + 2, y + 4, 1024, 52, 14, {4, 6, 13});
-        drawRoundedRect(scene, x, y, 1024, 52, 14, selected ? panelHi : panel);
-        if (selected) drawRoundedRect(scene, x, y + 7, 4, 38, 2, accent);
-        drawText(scene, item.name, x + 20, y + 3, 3, white);
-        drawText(scene, item.description, x + 20, y + 31, 2, muted);
-        drawText(scene, item.version, x + 884, y + 5, 2, accent);
-        drawText(scene, item.isTool ? "UTILITARIO" : "MIDIA", x + 884, y + 29, 1, muted);
+        drawRoundedRect(scene, x + 1, y + 2, 1022, 56, 14, {6, 9, 17});
+        drawRoundedRect(scene, x, y, 1024, 56, 14, selected ? panelHi : panel);
+        if (selected) drawRoundedRect(scene, x, y + 7, 3, 42, 2, accent);
+        drawText(scene, item.name, x + 20, y + 2, 3, white);
+        drawText(scene, item.category, x + 22, y + 32, 1, muted);
+        drawText(scene, item.version, x + 884, y + 4, 2, accent);
+        drawText(scene, item.isTool ? "UTILITARIO" : "MIDIA", x + 884, y + 31, 1, muted);
     }
 
     const int itemIndex = catalogIndexForPage(state.page, state.card);
     if (itemIndex < 0) return;
     const CatalogEntry& selected = kCatalogItems[itemIndex];
-    drawRoundedRect(scene, 1119, 659, 740, 298, 24, {4, 6, 13});
-    drawRoundedRect(scene, 1116, 654, 740, 298, 24, panelHi);
-    drawRoundedRect(scene, 1119, 657, 734, 292, 21, panel);
-    drawRoundedRect(scene, 1144, 676, 190, 30, 15, {24, 48, 65});
-    drawText(scene, selected.isTool ? "FERRAMENTA" : "APLICATIVO", 1158, 682, 1, accent);
-    drawText(scene, selected.name, 1144, 724, 4, white);
-    drawText(scene, selected.description, 1144, 779, 2, muted);
+    drawRoundedRect(scene, 1118, 657, 738, 298, 22, {6, 9, 17});
+    drawRoundedRect(scene, 1116, 654, 740, 298, 22, panelHi);
+    drawRoundedRect(scene, 1118, 656, 736, 294, 21, panel);
+    drawRoundedRect(scene, 1144, 676, 190, 32, 16, {24, 48, 65});
+    drawText(scene, selected.isTool ? "FERRAMENTA" : "APLICATIVO", 1156, 682, 1, accent);
+    drawText(scene, selected.name, 1144, 720, 4, white);
+    drawText(scene, selected.description, 1144, 777, 2, muted);
     drawText(scene, "DESENVOLVEDOR", 1144, 824, 1, {112, 133, 163});
-    drawText(scene, selected.developer, 1144, 845, 2, white);
+    drawText(scene, selected.developer, 1144, 844, 2, white);
     drawText(scene, "VERSAO", 1378, 824, 1, {112, 133, 163});
-    drawText(scene, selected.version, 1378, 845, 2, white);
-    drawRoundedRect(scene, 1144, 884, 680, 1, 0, panelHi);
-    drawText(scene, selected.repository, 1144, 905, 1, cyan);
+    drawText(scene, selected.version, 1378, 844, 2, white);
+    drawRoundedRect(scene, 1144, 880, 680, 1, 0, panelHi);
+    drawText(scene, "PACOTE DISPONIVEL EM", 1144, 887, 1, {112, 133, 163});
+    drawText(scene, selected.downloadSource, 1144, 908, 2, cyan);
 }
 
 
@@ -385,41 +413,98 @@ void drawFooter(Scene2D* scene) {
     drawText(scene, "D-PAD  NAVEGAR", 378, 1012, 2, muted);
     drawText(scene, "X  DETALHES", 674, 1012, 2, muted);
     drawText(scene, "O  VOLTAR", 946, 1012, 2, muted);
-    drawText(scene, "AURORA STORE  /  01.06", 1540, 1012, 2, {91, 111, 142});
+    drawText(scene, "AURORA STORE  /  01.07", 1540, 1012, 2, {91, 111, 142});
 }
 
 void drawDialog(Scene2D* scene, const StoreState& state) {
     scene->DrawRectangle(0, 0, kWidth, kHeight, {4, 7, 16});
-    drawRoundedRect(scene, 326, 238, 1268, 604, 30, panelHi);
-    drawRoundedRect(scene, 331, 243, 1258, 594, 26, panel);
-    drawRoundedRect(scene, 370, 278, 224, 34, 17, {24, 48, 65});
+    drawRoundedRect(scene, 326, 238, 1268, 604, 28, panelHi);
+    drawRoundedRect(scene, 328, 240, 1264, 600, 26, panel);
 
     const int itemIndex = catalogIndexForPage(state.page, state.card);
     if (itemIndex >= 0) {
         const CatalogEntry& item = kCatalogItems[itemIndex];
+        const int downloadState = gDownloadItemIndex == itemIndex
+            ? gDownloadState.load() : kDownloadIdle;
+        const Color accent = selectedAccent(state.page);
+
+        drawRoundedRect(scene, 370, 278, 224, 34, 17, {24, 48, 65});
         drawText(scene, "FONTE OFICIAL / GITHUB", 386, 286, 1, mint);
         drawText(scene, item.name, 386, 348, 5, white);
         drawText(scene, item.description, 390, 418, 2, muted);
+
         drawText(scene, "DESENVOLVEDOR", 390, 476, 1, {112, 133, 163});
         drawText(scene, item.developer, 390, 500, 3, white);
-        drawText(scene, "VERSAO  /  LICENCA", 760, 476, 1, {112, 133, 163});
+        drawText(scene, "VERSAO / LICENCA", 760, 476, 1, {112, 133, 163});
         drawText(scene, item.version, 760, 500, 3, white);
-        drawText(scene, item.license, 920, 500, 2, selectedAccent(state.page));
-        drawText(scene, "REPOSITORIO", 390, 566, 1, {112, 133, 163});
-        drawText(scene, item.repository, 390, 590, 2, cyan);
-        drawText(scene, "RELEASE OFICIAL", 390, 642, 1, {112, 133, 163});
-        drawText(scene, item.releases, 390, 666, 1, muted);
-        drawRoundedRect(scene, 730, 724, 460, 58, 18, {24, 53, 72});
-        drawCenteredText(scene, "O  FECHAR E VOLTAR", 740, 2, cyan);
+        drawText(scene, item.license, 920, 500, 2, accent);
+
+        drawText(scene, "PROJETO ORIGINAL", 390, 566, 1, {112, 133, 163});
+        drawText(scene, item.repository, 390, 588, 1, cyan);
+        drawText(scene, "PACOTE PS4 - " , 390, 622, 1, {112, 133, 163});
+        drawText(scene, item.downloadSource, 570, 622, 1, accent);
+        drawText(scene, item.downloadFilename, 390, 645, 2, white);
+
+        char status[160];
+        const unsigned long long bytes = gDownloadBytes.load();
+        const unsigned long long total = gDownloadTotal.load();
+        int percent = 0;
+        if (downloadState == kDownloadRunning) {
+            if (gCancelDownload.load()) {
+                std::snprintf(status, sizeof(status), "CANCELANDO DOWNLOAD...");
+            } else if (total > 0) {
+                percent = static_cast<int>((bytes * 100) / total);
+                if (percent > 99) percent = 99;
+                std::snprintf(status, sizeof(status), "BAIXANDO - %d%% - %.1f / %.1f MB",
+                    percent, bytes / 1048576.0, total / 1048576.0);
+            } else {
+                std::snprintf(status, sizeof(status), "BAIXANDO - %.1f MB",
+                    bytes / 1048576.0);
+            }
+        } else if (downloadState == kDownloadComplete) {
+            percent = 100;
+            std::snprintf(status, sizeof(status), "DOWNLOAD CONCLUIDO");
+        } else if (downloadState == kDownloadFailed) {
+            const int errorCode = gDownloadError.load();
+            if (errorCode >= 1000)
+                std::snprintf(status, sizeof(status), "ERRO HTTP %d - X PARA TENTAR DE NOVO", errorCode - 1000);
+            else
+                std::snprintf(status, sizeof(status), "ERRO NO DOWNLOAD (%d) - X PARA TENTAR DE NOVO", errorCode);
+        } else if (downloadState == kDownloadCancelled) {
+            std::snprintf(status, sizeof(status), "DOWNLOAD CANCELADO - X PARA TENTAR DE NOVO");
+        } else {
+            std::snprintf(status, sizeof(status), "PRONTO PARA BAIXAR O PACOTE");
+        }
+        drawText(scene, status, 390, 681, 2,
+            downloadState == kDownloadFailed ? amber : downloadState == kDownloadComplete ? mint : white);
+
+        drawRoundedRect(scene, 390, 719, 1140, 12, 6, panelHi);
+        if (percent > 0)
+            drawRoundedRect(scene, 390, 719, (1140 * percent) / 100, 12, 6,
+                downloadState == kDownloadFailed ? amber : mint);
+
+        const char* action = "X  BAIXAR PKG";
+        Color actionColor = {24, 53, 72};
+        if (downloadState == kDownloadRunning) {
+            action = "O  CANCELAR DOWNLOAD";
+            actionColor = {67, 46, 36};
+        } else if (downloadState == kDownloadComplete) {
+            action = "O  FECHAR E VOLTAR";
+            actionColor = {24, 53, 62};
+        } else if (downloadState == kDownloadFailed || downloadState == kDownloadCancelled) {
+            action = "X  TENTAR DE NOVO";
+        }
+        drawRoundedRect(scene, 730, 750, 460, 58, 17, actionColor);
+        drawText(scene, action, 805, 767, 2,
+            downloadState == kDownloadRunning ? amber : cyan);
+        drawText(scene, "SALVO EM /DATA/AURORA/DOWNLOADS", 390, 815, 1, muted);
     } else {
-        drawCenteredText(scene, "NENHUM JOGO NO CATALOGO", 430, 5, white);
-        drawCenteredText(scene, "ESTAMOS PRIORIZANDO APLICATIVOS HOMEBREW", 520, 2, muted);
-        drawRoundedRect(scene, 730, 680, 460, 58, 18, {24, 53, 72});
-        drawCenteredText(scene, "O  FECHAR E VOLTAR", 696, 2, cyan);
+        drawText(scene, "NENHUM JOGO NO CATALOGO", 386, 430, 5, white);
+        drawText(scene, "ESTAMOS PRIORIZANDO APLICATIVOS HOMEBREW", 390, 520, 2, muted);
+        drawRoundedRect(scene, 730, 680, 460, 58, 17, {24, 53, 72});
+        drawText(scene, "O  FECHAR E VOLTAR", 810, 698, 2, cyan);
     }
 }
-
-
 void renderStore(Scene2D* scene, const StoreState& state) {
     scene->FrameBufferFill(bg);
     drawHeader(scene, state);
@@ -452,11 +537,219 @@ void cyclePage(StoreState& state, int direction) {
     state.card = 0;
     state.focusCards = 0;
 }
+
+int32_t verifyDownloadCertificate(int32_t sslContext, uint32_t verifyError,
+    void * const certificates[], int32_t certificateCount, void *userData) {
+    (void)sslContext;
+    (void)certificates;
+    (void)certificateCount;
+    (void)userData;
+    // Fail closed: only proceed when the PS4 TLS stack reports a valid chain.
+    return verifyError == 0 ? 1 : 0;
+}
+
+bool ensureDirectory(const char* path) {
+    if (mkdir(path, 0777) == 0) return true;
+    return errno == EEXIST;
+}
+
+void downloadPackageWorker(int itemIndex) {
+    if (itemIndex < 0 || itemIndex >= kCatalogCount) {
+        gDownloadError.store(1);
+        gDownloadState.store(kDownloadFailed);
+        return;
+    }
+    const CatalogEntry& item = kCatalogItems[itemIndex];
+    char finalPath[256];
+    char partialPath[272];
+    std::snprintf(finalPath, sizeof(finalPath), "/data/aurora/downloads/%s", item.downloadFilename);
+    std::snprintf(partialPath, sizeof(partialPath), "%s.part", finalPath);
+
+    if (!ensureDirectory("/data/aurora") ||
+        !ensureDirectory("/data/aurora/downloads")) {
+        gDownloadError.store(2);
+        gDownloadState.store(kDownloadFailed);
+        return;
+    }
+
+    int netPool = -1;
+    int sslContext = -1;
+    int httpContext = -1;
+    int templateId = -1;
+    int connectionId = -1;
+    int requestId = -1;
+    FILE* output = nullptr;
+    uint8_t* buffer = nullptr;
+    bool success = false;
+    bool cancelled = false;
+    int errorCode = 0;
+
+    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0 ||
+        sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP) < 0 ||
+        sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL) < 0) {
+        errorCode = 3;
+        goto download_cleanup;
+    }
+    if (sceNetInit() < 0) {
+        errorCode = 4;
+        goto download_cleanup;
+    }
+    netPool = sceNetPoolCreate("auroraDownloadNet", 512 * 1024, 0);
+    if (netPool < 0) {
+        errorCode = 5;
+        goto download_cleanup;
+    }
+    sslContext = sceSslInit(SSL_POOLSIZE);
+    if (sslContext < 0) {
+        errorCode = 6;
+        goto download_cleanup;
+    }
+    httpContext = sceHttpInit(netPool, sslContext, 512 * 1024);
+    if (httpContext < 0) {
+        errorCode = 7;
+        goto download_cleanup;
+    }
+    templateId = sceHttpCreateTemplate(httpContext, "AuroraStore/01.07 PS4",
+        ORBIS_HTTP_VERSION_1_1, 1);
+    if (templateId < 0) {
+        errorCode = 8;
+        goto download_cleanup;
+    }
+    if (sceHttpsSetSslCallback(templateId, verifyDownloadCertificate, nullptr) < 0) {
+        errorCode = 9;
+        goto download_cleanup;
+    }
+    {
+        typedef void (*SetAutoRedirectFunction)(int32_t, int32_t);
+        SetAutoRedirectFunction setAutoRedirect =
+            reinterpret_cast<SetAutoRedirectFunction>(&sceHttpSetAutoRedirect);
+        setAutoRedirect(templateId, 1);
+    }
+    sceHttpSetConnectTimeOut(templateId, 30 * 1000 * 1000);
+    sceHttpSetResolveTimeOut(templateId, 30 * 1000 * 1000);
+
+    connectionId = sceHttpCreateConnectionWithURL(templateId, item.downloadUrl, 1);
+    if (connectionId < 0) {
+        errorCode = 10;
+        goto download_cleanup;
+    }
+    requestId = sceHttpCreateRequestWithURL(connectionId, ORBIS_METHOD_GET,
+        item.downloadUrl, 0);
+    if (requestId < 0) {
+        errorCode = 11;
+        goto download_cleanup;
+    }
+    if (sceHttpSendRequest(requestId, nullptr, 0) < 0) {
+        errorCode = 12;
+        goto download_cleanup;
+    }
+    {
+        int32_t statusCode = 0;
+        if (sceHttpGetStatusCode(requestId, &statusCode) < 0 || statusCode != 200) {
+            errorCode = statusCode > 0 ? 1000 + statusCode : 13;
+            goto download_cleanup;
+        }
+        int contentLengthType = ORBIS_HTTP_CONTENTLEN_NOT_FOUND;
+        size_t contentLength = 0;
+        if (sceHttpGetResponseContentLength(requestId, &contentLengthType, &contentLength) == 0 &&
+            contentLengthType == ORBIS_HTTP_CONTENTLEN_EXIST)
+            gDownloadTotal.store(static_cast<unsigned long long>(contentLength));
+        else
+            gDownloadTotal.store(0);
+    }
+
+    output = std::fopen(partialPath, "wb");
+    if (output == nullptr) {
+        errorCode = 14;
+        goto download_cleanup;
+    }
+    buffer = static_cast<uint8_t *>(std::malloc(64 * 1024));
+    if (buffer == nullptr) {
+        errorCode = 15;
+        goto download_cleanup;
+    }
+
+    for (;;) {
+        if (gCancelDownload.load()) {
+            cancelled = true;
+            break;
+        }
+        const int readCount = sceHttpReadData(requestId, buffer, 64 * 1024);
+        if (readCount < 0) {
+            errorCode = 16;
+            break;
+        }
+        if (readCount == 0) {
+            success = true;
+            break;
+        }
+        const size_t writeCount = std::fwrite(buffer, 1,
+            static_cast<size_t>(readCount), output);
+        if (writeCount != static_cast<size_t>(readCount)) {
+            errorCode = 17;
+            break;
+        }
+        gDownloadBytes.fetch_add(static_cast<unsigned long long>(readCount));
+    }
+
+    if (output != nullptr) {
+        std::fclose(output);
+        output = nullptr;
+    }
+    if (success && gDownloadTotal.load() > 0 &&
+        gDownloadBytes.load() != gDownloadTotal.load()) {
+        success = false;
+        errorCode = 18;
+    }
+    if (success && std::rename(partialPath, finalPath) != 0) {
+        success = false;
+        errorCode = 19;
+    }
+
+download_cleanup:
+    if (output != nullptr) std::fclose(output);
+    if (buffer != nullptr) std::free(buffer);
+    if (requestId >= 0) sceHttpDeleteRequest(requestId);
+    if (connectionId >= 0) sceHttpDeleteConnection(connectionId);
+    if (templateId >= 0) sceHttpDeleteTemplate(templateId);
+    if (httpContext >= 0) sceHttpTerm(httpContext);
+    if (sslContext >= 0) sceSslTerm(sslContext);
+    if (netPool >= 0) sceNetPoolDestroy(netPool);
+
+    if (!success && partialPath[0] != '\0') std::remove(partialPath);
+    if (cancelled) {
+        gDownloadState.store(kDownloadCancelled);
+    } else if (success) {
+        gDownloadState.store(kDownloadComplete);
+    } else {
+        gDownloadError.store(errorCode);
+        gDownloadState.store(kDownloadFailed);
+    }
+}
+
+void beginDownload(int itemIndex) {
+    if (itemIndex < 0 || itemIndex >= kCatalogCount) return;
+    const CatalogEntry& item = kCatalogItems[itemIndex];
+    if (item.downloadUrl[0] == '\0' || gDownloadState.load() == kDownloadRunning) return;
+    gDownloadItemIndex = itemIndex;
+    gDownloadBytes.store(0);
+    gDownloadTotal.store(0);
+    gDownloadError.store(0);
+    gCancelDownload.store(false);
+    gDownloadState.store(kDownloadRunning);
+    try {
+        std::thread(downloadPackageWorker, itemIndex).detach();
+    } catch (...) {
+        gDownloadError.store(20);
+        gDownloadState.store(kDownloadFailed);
+    }
+}
+
 }
 
 int main(void) {
     setvbuf(stdout, nullptr, _IONBF, 0);
-    DEBUGLOG << "Aurora Store frontend 01.06";
+    DEBUGLOG << "Aurora Store frontend 01.07";
 
     Scene2D* screen = new Scene2D(kWidth, kHeight, 4);
     if (!screen->Init(0x1000000, 2)) {
@@ -465,6 +758,10 @@ int main(void) {
     }
 
     screen->SetActiveFrameBuffer(0);
+    if (screen->LoadRgbaImage("/app0/assets/aurora-logo.rgba", 256, 256))
+        DEBUGLOG << "Aurora logo loaded";
+    else
+        DEBUGLOG << "Aurora logo unavailable; using vector fallback";
     FT_Face fontFace = nullptr;
     if (screen->InitFont(&fontFace, "/app0/assets/fonts/Gontserrat-Regular.ttf", 24)) {
         gFont = fontFace;
@@ -490,6 +787,8 @@ int main(void) {
 
     OrbisPadData padData = {};
     uint32_t previousButtons = 0;
+    int lastRenderedDownloadState = gDownloadState.load();
+    int progressUiTicks = 0;
     for (;;) {
         bool changed = false;
         if (padHandle >= 0 && scePadReadState(padHandle, &padData) == 0) {
@@ -497,8 +796,20 @@ int main(void) {
             previousButtons = padData.buttons;
             if (!state.dialogOpen && (pressed & kL1)) { cyclePage(state, -1); changed = true; }
             else if (!state.dialogOpen && (pressed & kR1)) { cyclePage(state, 1); changed = true; }
-            else if (state.dialogOpen && (pressed & (kCircle | kCross))) {
-                state.dialogOpen = false; changed = true;
+            else if (state.dialogOpen && (pressed & kCircle)) {
+                const int itemIndex = catalogIndexForPage(state.page, state.card);
+                if (itemIndex >= 0 && gDownloadItemIndex == itemIndex &&
+                    gDownloadState.load() == kDownloadRunning) {
+                    gCancelDownload.store(true);
+                } else {
+                    state.dialogOpen = false;
+                }
+                changed = true;
+            }
+            else if (state.dialogOpen && (pressed & kCross)) {
+                const int itemIndex = catalogIndexForPage(state.page, state.card);
+                if (itemIndex >= 0) beginDownload(itemIndex);
+                changed = true;
             }
             else if (!state.dialogOpen && (pressed & kCircle)) {
                 if (state.page != 0) { state.page = 0; state.focusCards = 0; state.card = 0; changed = true; }
@@ -537,7 +848,19 @@ int main(void) {
                 changed = true;
             }
         }
+        const int downloadState = gDownloadState.load();
+        if (state.dialogOpen && downloadState != lastRenderedDownloadState)
+            changed = true;
+        if (state.dialogOpen && downloadState == kDownloadRunning) {
+            if (++progressUiTicks >= 6) {
+                changed = true;
+                progressUiTicks = 0;
+            }
+        } else {
+            progressUiTicks = 0;
+        }
         if (changed) showFrame(screen, state, frameId);
+        lastRenderedDownloadState = downloadState;
         sceKernelUsleep(16000);
     }
 }

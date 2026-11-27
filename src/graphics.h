@@ -44,6 +44,9 @@ class Scene2D
 	int frameBufferCount;
 	
 	int activeFrameBufferIdx;
+	uint8_t *rgbaImage;
+	int imageWidth;
+	int imageHeight;
 
 	bool initFlipQueue();
 	bool allocateFrameBuffers(int num);
@@ -53,7 +56,7 @@ class Scene2D
 
 public:
 	Scene2D(int w, int h, int pixelDepth);
-	~Scene2D() = default;
+	~Scene2D();
 	
 	bool Init(size_t memSize, int numFrameBuffers);
 	
@@ -67,6 +70,8 @@ public:
 	
 	void DrawPixel(int x, int y, Color color);
 	void DrawRectangle(int x, int y, int w, int h, Color color);
+	bool LoadRgbaImage(const char *path, int imageW, int imageH);
+	bool DrawRgbaImage(int x, int y, int w, int h);
 	
 #ifdef GRAPHICS_USES_FONT
 	bool InitFont(FT_Face *face, const char *fontPath, int fontSize);

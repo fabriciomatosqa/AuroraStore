@@ -15,7 +15,10 @@
       "license": "MIT",
       "repository": "https://github.com/goph-R/OrbisMozi",
       "releases": "https://github.com/goph-R/OrbisMozi/releases/tag/v1.0.0",
-      "is_tool": false
+      "is_tool": false,
+      "download_url": "https://github.com/goph-R/OrbisMozi/releases/download/v1.0.0/OrbisMozi-1.0.0.pkg",
+      "download_filename": "OrbisMozi-1.0.0.pkg",
+      "download_source": "GitHub Releases"
     },
     {
       "id": "ezremote-client",
@@ -28,7 +31,10 @@
       "license": "GPL-2.0",
       "repository": "https://github.com/cy33hc/ps4-ezremote-client",
       "releases": "https://github.com/cy33hc/ps4-ezremote-client/releases/tag/2.12",
-      "is_tool": true
+      "is_tool": true,
+      "download_url": "https://github.com/cy33hc/ps4-ezremote-client/releases/download/2.12/ezremote_client.pkg",
+      "download_filename": "ezremote_client.pkg",
+      "download_source": "GitHub Releases"
     },
     {
       "id": "ps-mtp-explorer",
@@ -41,7 +47,10 @@
       "license": "GPL-3.0",
       "repository": "https://github.com/nueex/ps-mtp-explorer",
       "releases": "https://github.com/nueex/ps-mtp-explorer/releases/tag/v3.0",
-      "is_tool": true
+      "is_tool": true,
+      "download_url": "https://github.com/nueex/ps-mtp-explorer/releases/download/v3.0/PS-MTP-Explorer-3.0.pkg",
+      "download_filename": "PS-MTP-Explorer-3.0.pkg",
+      "download_source": "GitHub Releases"
     },
     {
       "id": "apollo-save-tool",
@@ -54,7 +63,10 @@
       "license": "GPL-3.0",
       "repository": "https://github.com/bucanero/apollo-ps4",
       "releases": "https://github.com/bucanero/apollo-ps4/releases/tag/v2.4.0",
-      "is_tool": true
+      "is_tool": true,
+      "download_url": "https://github.com/bucanero/apollo-ps4/releases/download/v2.4.0/IV0000-APOL00004_00-APOLLO0000000PS4.pkg",
+      "download_filename": "Apollo-Save-Tool-2.4.0.pkg",
+      "download_source": "GitHub Releases"
     },
     {
       "id": "itemzflow",
@@ -67,7 +79,10 @@
       "license": "GPL-3.0",
       "repository": "https://github.com/LightningMods/Itemzflow",
       "releases": "https://github.com/LightningMods/Itemzflow/releases/tag/1.08",
-      "is_tool": true
+      "is_tool": true,
+      "download_url": "https://pkg-zone.com/download/ps4/ITEM00001/latest",
+      "download_filename": "Itemzflow-1.08-PS4.pkg",
+      "download_source": "PKG-Zone"
     }
   ]
 }
