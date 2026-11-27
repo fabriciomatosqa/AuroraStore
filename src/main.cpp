@@ -713,7 +713,7 @@ download_cleanup:
     if (connectionId >= 0) sceHttpDeleteConnection(connectionId);
     if (templateId >= 0) sceHttpDeleteTemplate(templateId);
     if (httpContext >= 0) sceHttpTerm(httpContext);
-    if (sslContext >= 0) sceSslTerm(sslContext);
+    if (sslContext >= 0) sceSslTerm();
     if (netPool >= 0) sceNetPoolDestroy(netPool);
 
     if (!success && partialPath[0] != '\0') std::remove(partialPath);
