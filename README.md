@@ -2,25 +2,28 @@
 
 Projeto experimental para PS4 homebrew.
 
-## Versão 01.03
+## Versão 01.04 — interface inicial
 
-Esta versão substitui o executável sem interface por uma tela de inicialização visível, usando a classe Scene2D de exemplo do OpenOrbis. Se a tela “TESTE VISUAL: APP ABRIU” aparecer no console, o executável inicializou e conseguiu enviar um quadro para a saída de vídeo.
+A interface agora tem uma home visual, cabeçalho com seções, cards para Jogos, Aplicativos e Ferramentas, estados vazios e navegação pelo DualShock 4.
 
-O ícone do pacote agora vem da imagem enviada pelo usuário. O arquivo-fonte codificado em `assets/aurora-icon.png.b64` é decodificado por `tools/generate_icon.py` para `sce_sys/icon0.png`. O workflow valida 512 × 512, PNG, RGB e inclui o caminho no GP4.
+- **L1/R1:** alternar entre Início, Jogos, Apps e Favoritos.
+- **Setas:** mover o foco e percorrer as categorias.
+- **X:** selecionar uma categoria ou abrir o estado do catálogo.
+- **O:** voltar para Início ou fechar a janela.
 
-**Esta compilação ainda não é uma loja funcional:** catálogo, interface de navegação, conexão HTTP e downloads não estão implementados. A tela serve para diagnosticar a abertura do aplicativo.
+O catálogo ainda não contém itens. A interface informa isso ao usuário em vez de mostrar downloads fictícios. A leitura de catálogos remotos, busca, instalação e downloads ainda precisam ser implementados.
 
 ## Compilação
 
-Cada push na branch principal e cada execução manual acionam GitHub Actions. A compilação confirma que o PKG foi criado; ela não consegue validar execução no console. O teste final da tela precisa ser feito no PS4.
+GitHub Actions gera o pacote quando há push na branch principal ou execução manual. A compilação valida que o PKG foi gerado; a navegação ainda precisa ser testada no PS4.
 
 ## Estrutura
 
-- `src/main.cpp`: tela de inicialização e verificação visual.
-- `src/graphics.cpp`, `src/graphics.h`: renderer 2D de exemplo do OpenOrbis, licenciado sob GPL-3.0; licença em `third_party/OpenOrbis-PS4-Toolchain/LICENSE`.
-- `assets/aurora-icon.png.b64`: PNG original convertido para 512 × 512 RGB e codificado em Base64 para o workflow.
-- `.github/workflows/build.yml`: compilação OpenOrbis.
+- `src/main.cpp`: tela principal, navegação e entrada do controle.
+- `src/graphics.cpp`, `src/graphics.h`: renderer 2D baseado no Scene2D do OpenOrbis, licenciado sob GPL-3.0; licença em `third_party/OpenOrbis-PS4-Toolchain/LICENSE`.
+- `assets/aurora-icon.png.b64`: imagem do usuário codificada como Base64; `tools/generate_icon.py` a converte para o PNG RGB 512 × 512 do pacote.
+- `catalogs/homebrew.json`: catálogo local, atualmente vazio.
 
 ## Compatibilidade
 
-O pacote usa OpenOrbis 0.5.4. A compilação bem-sucedida não garante compatibilidade com cada firmware ou configuração de jailbreak. A versão 01.03 precisa ser instalada e testada no console.
+O projeto compila com OpenOrbis 0.5.4. Compilar o pacote não confirma suporte em cada firmware ou configuração de jailbreak.
