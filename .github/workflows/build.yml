@@ -1,6 +1,8 @@
 name: Build Aurora Store PS4
 
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -60,16 +62,16 @@ jobs:
         run: |
           make CC=clang CXX=clang++ LD=ld.lld
           test -s "IV0000-AURR00001_00-AURORASTORE00001.pkg"
-          strings sce_sys/param.sfo | grep -F "01.05"
-          test "$(strings sce_sys/param.sfo | grep -Fc "01.05")" -ge 2
+          strings sce_sys/param.sfo | grep -F "01.06"
+          test "$(strings sce_sys/param.sfo | grep -Fc "01.06")" -ge 2
           grep -q 'icon0.png' pkg.gp4
-          echo "Validated package metadata APP_VER and VERSION = 01.05; supplied icon is listed in GP4"
-          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.05.pkg"
+          echo "Validated package metadata APP_VER and VERSION = 01.06; supplied icon is listed in GP4"
+          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.06.pkg"
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AuroraStore-PS4-v01.05
-          path: "AuroraStore-PS4-v01.05.pkg"
+          name: AuroraStore-PS4-v01.06
+          path: "AuroraStore-PS4-v01.06.pkg"
           if-no-files-found: error
           retention-days: 90
