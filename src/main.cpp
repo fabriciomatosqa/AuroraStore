@@ -1,6 +1,6 @@
 #include <cstdio>
 #include <cstdint>
-#include <cmath>
+#include <math.h>
 #include <sstream>
 #include <orbis/libkernel.h>
 #include <orbis/Pad.h>
@@ -60,6 +60,7 @@ const Color blue = {71, 133, 255};
 const Color violet = {174, 103, 255};
 const Color mint = {87, 236, 194};
 const Color amber = {255, 190, 102};
+Color selectedAccent(int page) { return page == 3 ? mint : violet; }
 
 const uint8_t* glyphFor(char c) {
     static const uint8_t blank[7] = {};
@@ -151,7 +152,7 @@ int roundedInsetForRow(int row, int height, int radius) {
         : row - (height - radius) + 0.5 - radius;
     const double inside = radius * radius - dy * dy;
     if (inside <= 0.0) return radius;
-    int inset = static_cast<int>(std::ceil(radius - std::sqrt(inside)));
+    int inset = static_cast<int>(ceil(radius - sqrt(inside)));
     if (inset < 0) inset = 0;
     if (inset > radius) inset = radius;
     return inset;
@@ -379,7 +380,7 @@ void drawCatalogPage(Scene2D* scene, const StoreState& state) {
 
 
 void drawFooter(Scene2D* scene) {
-    drawRoundedRect(scene, 64, 984, 1792, 2, 1, panelHi)
+    drawRoundedRect(scene, 64, 984, 1792, 2, 1, panelHi);
     drawText(scene, "L1 / R1  SECOES", 82, 1012, 2, muted);
     drawText(scene, "D-PAD  NAVEGAR", 378, 1012, 2, muted);
     drawText(scene, "X  DETALHES", 674, 1012, 2, muted);
