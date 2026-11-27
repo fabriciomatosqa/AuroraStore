@@ -1,6 +1,73 @@
 {
   "schema_version": 1,
-  "catalog_name": "Aurora Store — Homebrew",
+  "catalog_name": "Aurora Store - repositorios homebrew oficiais",
   "updated_at": "2026-11-26",
-  "items": []
+  "source_catalog": "https://pkg-zone.com/?console=ps4",
+  "items": [
+    {
+      "id": "orbis-mozi",
+      "name": "Orbis Mozi",
+      "type": "app",
+      "version": "1.0.0",
+      "developer": "goph-R",
+      "category": "Media",
+      "description": "Reproduz video local ou em compartilhamento SMB diretamente no PS4.",
+      "license": "MIT",
+      "repository": "https://github.com/goph-R/OrbisMozi",
+      "releases": "https://github.com/goph-R/OrbisMozi/releases/tag/v1.0.0",
+      "is_tool": false
+    },
+    {
+      "id": "ezremote-client",
+      "name": "ezRemote Client",
+      "type": "app",
+      "version": "2.12",
+      "developer": "cy33hc",
+      "category": "Transferencia",
+      "description": "Acessa FTP, SMB, WebDAV, NFS, HTTP e Google Drive.",
+      "license": "GPL-2.0",
+      "repository": "https://github.com/cy33hc/ps4-ezremote-client",
+      "releases": "https://github.com/cy33hc/ps4-ezremote-client/releases/tag/2.12",
+      "is_tool": true
+    },
+    {
+      "id": "ps-mtp-explorer",
+      "name": "PS MTP Explorer",
+      "type": "app",
+      "version": "3.0",
+      "developer": "nueex",
+      "category": "Arquivos",
+      "description": "Gerencia arquivos via USB MTP e transfere pacotes PKG.",
+      "license": "GPL-3.0",
+      "repository": "https://github.com/nueex/ps-mtp-explorer",
+      "releases": "https://github.com/nueex/ps-mtp-explorer/releases/tag/v3.0",
+      "is_tool": true
+    },
+    {
+      "id": "apollo-save-tool",
+      "name": "Apollo Save Tool",
+      "type": "app",
+      "version": "2.4.0",
+      "developer": "bucanero",
+      "category": "Saves",
+      "description": "Gerencia saves com backup, patches e resign no PS4.",
+      "license": "GPL-3.0",
+      "repository": "https://github.com/bucanero/apollo-ps4",
+      "releases": "https://github.com/bucanero/apollo-ps4/releases/tag/v2.4.0",
+      "is_tool": true
+    },
+    {
+      "id": "itemzflow",
+      "name": "Itemzflow Game Manager",
+      "type": "app",
+      "version": "1.08",
+      "developer": "LightningMods",
+      "category": "Gerenciador",
+      "description": "Gerenciador homebrew e menu alternativo para PS4.",
+      "license": "GPL-3.0",
+      "repository": "https://github.com/LightningMods/Itemzflow",
+      "releases": "https://github.com/LightningMods/Itemzflow/releases/tag/1.08",
+      "is_tool": true
+    }
+  ]
 }
