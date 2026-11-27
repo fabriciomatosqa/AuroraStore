@@ -2,7 +2,7 @@
 
 Projeto experimental para PS4 homebrew.
 
-## Versão 01.04 — interface inicial
+## Versão 01.05 — interface da loja
 
 A interface agora tem uma home visual, cabeçalho com seções, cards para Jogos, Aplicativos e Ferramentas, estados vazios e navegação pelo DualShock 4.
 
