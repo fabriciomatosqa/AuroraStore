@@ -65,17 +65,17 @@ jobs:
         run: |
           make CC=clang CXX=clang++ LD=ld.lld
           test -s "IV0000-AURR00001_00-AURORASTORE00001.pkg"
-          strings sce_sys/param.sfo | grep -F "01.07"
-          test "$(strings sce_sys/param.sfo | grep -Fc "01.07")" -ge 2
+          strings sce_sys/param.sfo | grep -F "01.08"
+          test "$(strings sce_sys/param.sfo | grep -Fc "01.08")" -ge 2
           grep -q 'icon0.png' pkg.gp4
           grep -q 'assets/aurora-logo.rgba' pkg.gp4
           echo "Validated package metadata, icon, and Aurora logo are listed in GP4"
-          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.07.pkg"
+          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.08.pkg"
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AuroraStore-PS4-v01.07
-          path: "AuroraStore-PS4-v01.07.pkg"
+          name: AuroraStore-PS4-v01.08
+          path: "AuroraStore-PS4-v01.08.pkg"
           if-no-files-found: error
           retention-days: 90

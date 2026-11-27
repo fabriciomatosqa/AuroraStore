@@ -70,6 +70,8 @@ public:
 	
 	void DrawPixel(int x, int y, Color color);
 	void DrawRectangle(int x, int y, int w, int h, Color color);
+	void DrawRoundedRectangle(int x, int y, int w, int h, int radius, Color color);
+	void DrawLine(int x0, int y0, int x1, int y1, Color color, int thickness);
 	bool LoadRgbaImage(const char *path, int imageW, int imageH);
 	bool DrawRgbaImage(int x, int y, int w, int h);
 	

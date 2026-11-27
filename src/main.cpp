@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cmath>
 #include <sstream>
+#include <string>
 #include <thread>
 #include <atomic>
 #include <sys/stat.h>
@@ -72,6 +73,10 @@ std::atomic<int> gDownloadState(kDownloadIdle);
 std::atomic<unsigned long long> gDownloadBytes(0);
 std::atomic<unsigned long long> gDownloadTotal(0);
 std::atomic<int> gDownloadError(0);
+std::atomic<int> gDownloadApiError(0);
+std::atomic<int> gDownloadNetErrno(-1);
+std::atomic<int> gDownloadHttpStatus(0);
+std::atomic<uint32_t> gDownloadSslError(0);
 std::atomic<bool> gCancelDownload(false);
 int gDownloadItemIndex = -1;
 
@@ -95,13 +100,13 @@ const uint8_t* glyphFor(char c) {
 }
 
 int fontSizeForScale(int scale) {
-    if (scale <= 1) return 18;
-    if (scale == 2) return 23;
-    if (scale == 3) return 31;
-    if (scale == 4) return 40;
-    if (scale == 5) return 49;
-    if (scale == 6) return 58;
-    return 68;
+    if (scale <= 1) return 22;
+    if (scale == 2) return 29;
+    if (scale == 3) return 37;
+    if (scale == 4) return 45;
+    if (scale == 5) return 54;
+    if (scale == 6) return 63;
+    return 72;
 }
 
 void drawPixelText(Scene2D* scene, const char* text, int x, int y, int scale, Color color) {
@@ -185,15 +190,7 @@ int roundedInsetForRow(int row, int height, int radius) {
 }
 
 void drawRoundedRect(Scene2D* scene, int x, int y, int w, int h, int radius, Color color) {
-    if (w <= 0 || h <= 0) return;
-    if (radius < 0) radius = 0;
-    if (radius > w / 2) radius = w / 2;
-    if (radius > h / 2) radius = h / 2;
-    for (int row = 0; row < h; ++row) {
-        const int inset = roundedInsetForRow(row, h, radius);
-        const int width = w - 2 * inset;
-        if (width > 0) scene->DrawRectangle(x + inset, y + row, width, 1, color);
-    }
+    scene->DrawRoundedRectangle(x, y, w, h, radius, color);
 }
 
 void drawGradient(Scene2D* scene, int x, int y, int w, int h, Color top, Color bottom) {
@@ -206,19 +203,7 @@ void drawGradient(Scene2D* scene, int x, int y, int w, int h, Color top, Color b
     }
 }
 void drawLine(Scene2D* scene, int x0, int y0, int x1, int y1, Color color, int thickness = 4) {
-    int dx = x1 > x0 ? x1 - x0 : x0 - x1;
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = y1 > y0 ? y0 - y1 : y1 - y0;
-    int sy = y0 < y1 ? 1 : -1;
-    int error = dx + dy;
-    const int half = thickness / 2;
-    for (;;) {
-        scene->DrawRectangle(x0 - half, y0 - half, thickness, thickness, color);
-        if (x0 == x1 && y0 == y1) break;
-        const int twice = 2 * error;
-        if (twice >= dy) { error += dy; x0 += sx; }
-        if (twice <= dx) { error += dx; y0 += sy; }
-    }
+    scene->DrawLine(x0, y0, x1, y1, color, thickness);
 }
 
 void drawLogo(Scene2D* scene, int x, int y, int size) {
@@ -364,163 +349,313 @@ int catalogIndexForPage(int page, int visibleIndex) {
     return -1;
 }
 
+void drawProductArtwork(Scene2D* scene, const CatalogEntry& item, int itemIndex,
+    int x, int y, int w, int h) {
+    const Color tops[5] = {{14, 91, 111}, {56, 45, 112}, {24, 104, 103}, {77, 43, 106}, {31, 103, 78}};
+    const Color bottoms[5] = {{11, 23, 48}, {16, 23, 57}, {12, 37, 52}, {27, 18, 53}, {11, 42, 39}};
+    const Color accents[5] = {{73, 229, 255}, {174, 103, 255}, {87, 236, 194}, {196, 133, 255}, {92, 245, 190}};
+    const Color top = tops[itemIndex % 5], bottom = bottoms[itemIndex % 5];
+    const Color accent = accents[itemIndex % 5];
+
+    drawRoundedRect(scene, x, y, w, h, 22, {6, 9, 18});
+    drawGradient(scene, x + 1, y + 1, w - 2, h - 2, top, bottom);
+    drawLine(scene, x + w / 8, y + h - 4, x + w / 2, y + 4, {30, 55, 91}, 2);
+    drawLine(scene, x + w / 3, y + h - 4, x + w * 3 / 4, y + 4, {31, 58, 98}, 2);
+    drawLine(scene, x + w * 3 / 5, y + h - 4, x + w - 16, y + h / 5, {32, 59, 101}, 2);
+
+    const int cx = x + w * 2 / 3;
+    const int cy = y + h / 2 - (h > 300 ? 28 : 0);
+    if (itemIndex == 0) {
+        drawRoundedRect(scene, cx - 118, cy - 76, 236, 152, 20, {21, 39, 70});
+        drawRoundedRect(scene, cx - 101, cy - 59, 202, 118, 14, {28, 57, 89});
+        drawLine(scene, cx - 16, cy - 31, cx - 16, cy + 32, accent, 6);
+        drawLine(scene, cx - 16, cy - 31, cx + 39, cy, accent, 6);
+        drawLine(scene, cx + 39, cy, cx - 16, cy + 32, accent, 6);
+    } else if (itemIndex == 1) {
+        drawLine(scene, cx - 86, cy - 50, cx + 60, cy - 4, accent, 4);
+        drawLine(scene, cx - 86, cy + 53, cx + 60, cy - 4, accent, 4);
+        drawLine(scene, cx + 60, cy - 4, cx + 114, cy + 62, accent, 4);
+        drawRoundedRect(scene, cx - 111, cy - 75, 50, 50, 25, {31, 57, 98});
+        drawRoundedRect(scene, cx - 111, cy + 29, 50, 50, 25, {31, 57, 98});
+        drawRoundedRect(scene, cx + 34, cy - 29, 54, 54, 27, {75, 59, 137});
+        drawRoundedRect(scene, cx + 89, cy + 37, 50, 50, 25, {31, 57, 98});
+    } else if (itemIndex == 2) {
+        drawRoundedRect(scene, cx - 106, cy - 74, 92, 130, 16, {31, 62, 92});
+        drawRoundedRect(scene, cx + 18, cy - 55, 108, 112, 18, {33, 73, 91});
+        drawLine(scene, cx - 12, cy - 5, cx + 15, cy - 5, accent, 7);
+        drawLine(scene, cx + 6, cy - 17, cx + 20, cy - 5, accent, 7);
+        drawLine(scene, cx + 6, cy + 7, cx + 20, cy - 5, accent, 7);
+        drawLine(scene, cx + 10, cy + 74, cx - 15, cy + 74, accent, 7);
+    } else if (itemIndex == 3) {
+        drawRoundedRect(scene, cx - 99, cy - 79, 198, 158, 28, {39, 36, 86});
+        drawRoundedRect(scene, cx - 70, cy - 48, 140, 96, 18, {53, 49, 111});
+        drawLine(scene, cx, cy - 58, cx, cy + 59, accent, 4);
+        drawLine(scene, cx - 76, cy, cx + 76, cy, accent, 4);
+        drawLine(scene, cx - 54, cy - 54, cx + 54, cy + 54, {116, 100, 204}, 3);
+        drawLine(scene, cx - 54, cy + 54, cx + 54, cy - 54, {116, 100, 204}, 3);
+    } else {
+        const int tile = h > 300 ? 55 : 25, gap = h > 300 ? 14 : 7;
+        const int startX = cx - tile - gap / 2, startY = cy - tile - gap / 2;
+        for (int row = 0; row < 2; ++row) for (int column = 0; column < 2; ++column) {
+            const bool active = (row == 0 && column == 1) || (row == 1 && column == 0);
+            drawRoundedRect(scene, startX + column * (tile + gap), startY + row * (tile + gap),
+                tile, tile, h > 300 ? 14 : 7, active ? accent : Color{28, 67, 67});
+        }
+    }
+
+    const int logoSize = h > 300 ? 104 : 50;
+    drawLogo(scene, x + w - logoSize - 22, y + 18, logoSize);
+    if (h > 300) {
+        drawText(scene, item.name, x + 26, y + h - 170, 4, white);
+        const int gap = 12, tileW = (w - 76 - gap * 2) / 3, tileY = y + h - 104;
+        for (int i = 0; i < 3; ++i) {
+            const int tileX = x + 26 + i * (tileW + gap);
+            drawRoundedRect(scene, tileX, tileY, tileW, 76, 12, {14, 24, 44});
+            drawGradient(scene, tileX + 2, tileY + 2, tileW - 4, 72,
+                blend(top, accent, i + 1, 5), bottom);
+            drawRoundedRect(scene, tileX + 14, tileY + 14, tileW - 28, 46, 8,
+                i == 1 ? Color{30, 63, 91} : Color{23, 43, 72});
+            drawRoundedRect(scene, tileX + 25, tileY + 23, tileW / 3, 3, 1, accent);
+            drawRoundedRect(scene, tileX + 25, tileY + 32, tileW / 2, 3, 1, {104, 137, 174});
+            drawRoundedRect(scene, tileX + 25, tileY + 41, tileW / 4, 3, 1, {104, 137, 174});
+        }
+    }
+}
+
+void drawWrappedText(Scene2D* scene, const char* value, int x, int y, int maxWidth,
+    int scale, Color color, int maxLines = 3) {
+    std::istringstream words(value);
+    std::string word, line;
+    int lineNumber = 0;
+    const int lineHeight = fontSizeForScale(scale) + 8;
+    while (words >> word) {
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && measureTextWidth(candidate.c_str(), scale) > maxWidth) {
+            drawText(scene, line.c_str(), x, y + lineNumber * lineHeight, scale, color);
+            if (++lineNumber >= maxLines) return;
+            line = word;
+        } else line = candidate;
+    }
+    if (!line.empty() && lineNumber < maxLines)
+        drawText(scene, line.c_str(), x, y + lineNumber * lineHeight, scale, color);
+}
+
 void drawCatalogPage(Scene2D* scene, const StoreState& state) {
     const bool toolsPage = state.page == 3;
     const int count = catalogCountForPage(state.page);
-    const Color accent = toolsPage ? mint : violet;
-    drawText(scene, toolsPage ? "FERRAMENTAS E UTILITARIOS" : "APPS HOMEBREW", 66, 616, 3, white);
-    drawText(scene, toolsPage ? "4 PROJETOS / PKG" : "5 PROJETOS / PKG", 1376, 622, 2, muted);
-
-    for (int row = 0; row < count; ++row) {
-        const int itemIndex = catalogIndexForPage(state.page, row);
-        if (itemIndex < 0) continue;
-        const CatalogEntry& item = kCatalogItems[itemIndex];
-        const int x = 64;
-        const int y = 654 + row * 61;
-        const bool selected = row == state.card;
-        drawRoundedRect(scene, x + 1, y + 2, 1022, 56, 14, {6, 9, 17});
-        drawRoundedRect(scene, x, y, 1024, 56, 14, selected ? panelHi : panel);
-        if (selected) drawRoundedRect(scene, x, y + 7, 3, 42, 2, accent);
-        drawText(scene, item.name, x + 20, y + 2, 3, white);
-        drawText(scene, item.category, x + 22, y + 32, 1, muted);
-        drawText(scene, item.version, x + 884, y + 4, 2, accent);
-        drawText(scene, item.isTool ? "UTILITARIO" : "MIDIA", x + 884, y + 31, 1, muted);
-    }
-
     const int itemIndex = catalogIndexForPage(state.page, state.card);
     if (itemIndex < 0) return;
     const CatalogEntry& selected = kCatalogItems[itemIndex];
-    drawRoundedRect(scene, 1118, 657, 738, 298, 22, {6, 9, 17});
-    drawRoundedRect(scene, 1116, 654, 740, 298, 22, panelHi);
-    drawRoundedRect(scene, 1118, 656, 736, 294, 21, panel);
-    drawRoundedRect(scene, 1144, 676, 190, 32, 16, {24, 48, 65});
-    drawText(scene, selected.isTool ? "FERRAMENTA" : "APLICATIVO", 1156, 682, 1, accent);
-    drawText(scene, selected.name, 1144, 720, 4, white);
-    drawText(scene, selected.description, 1144, 777, 2, muted);
-    drawText(scene, "DESENVOLVEDOR", 1144, 824, 1, {112, 133, 163});
-    drawText(scene, selected.developer, 1144, 844, 2, white);
-    drawText(scene, "VERSAO", 1378, 824, 1, {112, 133, 163});
-    drawText(scene, selected.version, 1378, 844, 2, white);
-    drawRoundedRect(scene, 1144, 880, 680, 1, 0, panelHi);
-    drawText(scene, "PACOTE DISPONIVEL EM", 1144, 887, 1, {112, 133, 163});
-    drawText(scene, selected.downloadSource, 1144, 908, 2, cyan);
+    const Color accent = toolsPage ? mint : violet;
+
+    drawRoundedRect(scene, 64, 150, 1792, 408, 28, panelHi);
+    drawProductArtwork(scene, selected, itemIndex, 76, 162, 920, 384);
+    drawRoundedRect(scene, 1008, 162, 828, 384, 22, panel);
+    drawRoundedRect(scene, 1040, 184, 220, 34, 17, {24, 48, 65});
+    drawText(scene, toolsPage ? "FERRAMENTA HOMEBREW" : "APP HOMEBREW", 1056, 191, 1, accent);
+    drawText(scene, selected.name, 1040, 230, 6, white);
+    drawWrappedText(scene, selected.description, 1044, 300, 744, 2, muted, 2);
+
+    drawText(scene, "DESENVOLVEDOR", 1044, 365, 1, {112, 133, 163});
+    drawText(scene, selected.developer, 1044, 389, 2, white);
+    drawText(scene, "VERSAO", 1304, 365, 1, {112, 133, 163});
+    drawText(scene, selected.version, 1304, 389, 2, white);
+    drawText(scene, "LICENCA", 1470, 365, 1, {112, 133, 163});
+    drawText(scene, selected.license, 1470, 389, 1, accent);
+    drawRoundedRect(scene, 1044, 428, 720, 1, 0, panelHi);
+    drawText(scene, "PACOTE OFICIAL", 1044, 443, 1, {112, 133, 163});
+    drawText(scene, selected.downloadSource, 1044, 468, 2, cyan);
+    drawRoundedRect(scene, 1510, 450, 286, 62, 18, {24, 72, 93});
+    drawRoundedRect(scene, 1510, 450, 4, 62, 2, cyan);
+    drawText(scene, "X  VER DETALHES", 1552, 468, 2, white);
+
+    drawText(scene, toolsPage ? "FERRAMENTAS PARA O SEU PS4" : "APPS HOMEBREW", 66, 585, 3, white);
+    char countLabel[80];
+    std::snprintf(countLabel, sizeof(countLabel), "%d PROJETOS  /  USE O D-PAD", count);
+    drawText(scene, countLabel, 1320, 592, 1, muted);
+
+    const int cardY = 624, cardHeight = 326, gap = 20;
+    const int cardWidth = (1792 - gap * (count - 1)) / count;
+    for (int row = 0; row < count; ++row) {
+        const int index = catalogIndexForPage(state.page, row);
+        if (index < 0) continue;
+        const CatalogEntry& item = kCatalogItems[index];
+        const int x = 64 + row * (cardWidth + gap);
+        const bool isSelected = row == state.card;
+        drawRoundedRect(scene, x, cardY, cardWidth, cardHeight, 20,
+            isSelected ? accent : panelHi);
+        drawRoundedRect(scene, x + 2, cardY + 2, cardWidth - 4, cardHeight - 4, 18,
+            isSelected ? Color{19, 30, 51} : panel);
+        drawProductArtwork(scene, item, index, x + 9, cardY + 9, cardWidth - 18, 142);
+        drawText(scene, item.name, x + 18, cardY + 166, 2, white);
+        drawText(scene, item.category, x + 20, cardY + 204, 1, muted);
+        drawText(scene, item.version, x + 20, cardY + 244, 2, accent);
+        drawText(scene, isSelected ? "X  ABRIR DETALHES" : "SELECIONAR",
+            x + 20, cardY + 286, 1, isSelected ? cyan : Color{104, 125, 155});
+        if (isSelected)
+            drawRoundedRect(scene, x + 18, cardY + cardHeight - 6, cardWidth - 36, 3, 1, accent);
+    }
 }
 
-
-void drawFooter(Scene2D* scene) {
+void drawFooter(Scene2D* scene, const StoreState& state) {
     drawRoundedRect(scene, 64, 984, 1792, 2, 1, panelHi);
     drawText(scene, "L1 / R1  SECOES", 82, 1012, 2, muted);
-    drawText(scene, "D-PAD  NAVEGAR", 378, 1012, 2, muted);
-    drawText(scene, "X  DETALHES", 674, 1012, 2, muted);
-    drawText(scene, "O  VOLTAR", 946, 1012, 2, muted);
-    drawText(scene, "AURORA STORE  /  01.07", 1540, 1012, 2, {91, 111, 142});
+    drawText(scene, state.page >= 2 ? "D-PAD  SELECIONAR" : "D-PAD  NAVEGAR", 378, 1012, 2, muted);
+    drawText(scene, state.dialogOpen ? "X  BAIXAR PKG" : "X  DETALHES", 674, 1012, 2, muted);
+    const int selected = state.page >= 2 ? catalogIndexForPage(state.page, state.card) : -1;
+    const bool downloading = state.dialogOpen && selected >= 0 &&
+        selected == gDownloadItemIndex && gDownloadState.load() == kDownloadRunning;
+    drawText(scene, downloading ? "O  CANCELAR" : "O  VOLTAR", 946, 1012, 2, muted);
+    drawText(scene, "AURORA STORE  /  01.08", 1540, 1012, 2, {91, 111, 142});
 }
 
 void drawDialog(Scene2D* scene, const StoreState& state) {
-    scene->DrawRectangle(0, 0, kWidth, kHeight, {4, 7, 16});
-    drawRoundedRect(scene, 326, 238, 1268, 604, 28, panelHi);
-    drawRoundedRect(scene, 328, 240, 1264, 600, 26, panel);
-
+    scene->FrameBufferFill(bg);
+    drawHeader(scene, state);
     const int itemIndex = catalogIndexForPage(state.page, state.card);
-    if (itemIndex >= 0) {
-        const CatalogEntry& item = kCatalogItems[itemIndex];
-        const int downloadState = gDownloadItemIndex == itemIndex
-            ? gDownloadState.load() : kDownloadIdle;
-        const Color accent = selectedAccent(state.page);
-
-        drawRoundedRect(scene, 370, 278, 224, 34, 17, {24, 48, 65});
-        drawText(scene, "FONTE OFICIAL / GITHUB", 386, 286, 1, mint);
-        drawText(scene, item.name, 386, 348, 5, white);
-        drawText(scene, item.description, 390, 418, 2, muted);
-
-        drawText(scene, "DESENVOLVEDOR", 390, 476, 1, {112, 133, 163});
-        drawText(scene, item.developer, 390, 500, 3, white);
-        drawText(scene, "VERSAO / LICENCA", 760, 476, 1, {112, 133, 163});
-        drawText(scene, item.version, 760, 500, 3, white);
-        drawText(scene, item.license, 920, 500, 2, accent);
-
-        drawText(scene, "PROJETO ORIGINAL", 390, 566, 1, {112, 133, 163});
-        drawText(scene, item.repository, 390, 588, 1, cyan);
-        drawText(scene, "PACOTE PS4 - " , 390, 622, 1, {112, 133, 163});
-        drawText(scene, item.downloadSource, 570, 622, 1, accent);
-        drawText(scene, item.downloadFilename, 390, 645, 2, white);
-
-        char status[160];
-        const unsigned long long bytes = gDownloadBytes.load();
-        const unsigned long long total = gDownloadTotal.load();
-        int percent = 0;
-        if (downloadState == kDownloadRunning) {
-            if (gCancelDownload.load()) {
-                std::snprintf(status, sizeof(status), "CANCELANDO DOWNLOAD...");
-            } else if (total > 0) {
-                percent = static_cast<int>((bytes * 100) / total);
-                if (percent > 99) percent = 99;
-                std::snprintf(status, sizeof(status), "BAIXANDO - %d%% - %.1f / %.1f MB",
-                    percent, bytes / 1048576.0, total / 1048576.0);
-            } else {
-                std::snprintf(status, sizeof(status), "BAIXANDO - %.1f MB",
-                    bytes / 1048576.0);
-            }
-        } else if (downloadState == kDownloadComplete) {
-            percent = 100;
-            std::snprintf(status, sizeof(status), "DOWNLOAD CONCLUIDO");
-        } else if (downloadState == kDownloadFailed) {
-            const int errorCode = gDownloadError.load();
-            if (errorCode >= 1000)
-                std::snprintf(status, sizeof(status), "ERRO HTTP %d - X PARA TENTAR DE NOVO", errorCode - 1000);
-            else
-                std::snprintf(status, sizeof(status), "ERRO NO DOWNLOAD (%d) - X PARA TENTAR DE NOVO", errorCode);
-        } else if (downloadState == kDownloadCancelled) {
-            std::snprintf(status, sizeof(status), "DOWNLOAD CANCELADO - X PARA TENTAR DE NOVO");
-        } else {
-            std::snprintf(status, sizeof(status), "PRONTO PARA BAIXAR O PACOTE");
-        }
-        drawText(scene, status, 390, 681, 2,
-            downloadState == kDownloadFailed ? amber : downloadState == kDownloadComplete ? mint : white);
-
-        drawRoundedRect(scene, 390, 719, 1140, 12, 6, panelHi);
-        if (percent > 0)
-            drawRoundedRect(scene, 390, 719, (1140 * percent) / 100, 12, 6,
-                downloadState == kDownloadFailed ? amber : mint);
-
-        const char* action = "X  BAIXAR PKG";
-        Color actionColor = {24, 53, 72};
-        if (downloadState == kDownloadRunning) {
-            action = "O  CANCELAR DOWNLOAD";
-            actionColor = {67, 46, 36};
-        } else if (downloadState == kDownloadComplete) {
-            action = "O  FECHAR E VOLTAR";
-            actionColor = {24, 53, 62};
-        } else if (downloadState == kDownloadFailed || downloadState == kDownloadCancelled) {
-            action = "X  TENTAR DE NOVO";
-        }
-        drawRoundedRect(scene, 730, 750, 460, 58, 17, actionColor);
-        drawText(scene, action, 805, 767, 2,
-            downloadState == kDownloadRunning ? amber : cyan);
-        drawText(scene, "SALVO EM /DATA/AURORA/DOWNLOADS", 390, 815, 1, muted);
-    } else {
-        drawText(scene, "NENHUM JOGO NO CATALOGO", 386, 430, 5, white);
-        drawText(scene, "ESTAMOS PRIORIZANDO APLICATIVOS HOMEBREW", 390, 520, 2, muted);
-        drawRoundedRect(scene, 730, 680, 460, 58, 17, {24, 53, 72});
-        drawText(scene, "O  FECHAR E VOLTAR", 810, 698, 2, cyan);
+    if (itemIndex < 0) {
+        drawRoundedRect(scene, 64, 150, 1792, 796, 28, panel);
+        drawLogo(scene, 820, 250, 220);
+        drawCenteredText(scene, "NENHUM JOGO HOMEBREW", 540, 5, white);
+        drawCenteredText(scene, "O CATALOGO PRIORIZA APPS E FERRAMENTAS", 620, 2, muted);
+        drawFooter(scene, state);
+        return;
     }
+
+    const CatalogEntry& item = kCatalogItems[itemIndex];
+    const Color accent = selectedAccent(state.page);
+    const int downloadState = gDownloadItemIndex == itemIndex
+        ? gDownloadState.load() : kDownloadIdle;
+
+    drawProductArtwork(scene, item, itemIndex, 64, 150, 1120, 470);
+    drawRoundedRect(scene, 1204, 150, 652, 470, 26, panelHi);
+    drawRoundedRect(scene, 1207, 153, 646, 464, 23, panel);
+    drawRoundedRect(scene, 1244, 176, 226, 34, 17, {24, 48, 65});
+    drawText(scene, "FONTE OFICIAL  /  PS4", 1260, 183, 1, mint);
+    drawText(scene, item.name, 1244, 222, 4, white);
+    drawWrappedText(scene, item.description, 1248, 278, 556, 2, muted, 2);
+    drawText(scene, "DESENVOLVEDOR", 1248, 342, 1, {112, 133, 163});
+    drawText(scene, item.developer, 1248, 366, 2, white);
+    drawText(scene, "VERSAO", 1480, 342, 1, {112, 133, 163});
+    drawText(scene, item.version, 1480, 366, 2, white);
+    drawText(scene, "LICENCA", 1630, 342, 1, {112, 133, 163});
+    drawText(scene, item.license, 1630, 366, 1, accent);
+    drawRoundedRect(scene, 1248, 405, 556, 1, 0, panelHi);
+    drawText(scene, "PACOTE DISPONIVEL", 1248, 418, 1, {112, 133, 163});
+    drawText(scene, item.downloadSource, 1248, 442, 1, accent);
+    drawText(scene, item.downloadFilename, 1436, 442, 1, white);
+
+    char status[192];
+    const unsigned long long bytes = gDownloadBytes.load(), total = gDownloadTotal.load();
+    int percent = 0;
+    if (downloadState == kDownloadRunning) {
+        if (gCancelDownload.load()) {
+            std::snprintf(status, sizeof(status), "CANCELANDO DOWNLOAD...");
+        } else if (total > 0) {
+            percent = static_cast<int>((bytes * 100) / total);
+            if (percent > 99) percent = 99;
+            std::snprintf(status, sizeof(status), "BAIXANDO  %d%%  -  %.1f / %.1f MB",
+                percent, bytes / 1048576.0, total / 1048576.0);
+        } else std::snprintf(status, sizeof(status), "BAIXANDO  %.1f MB", bytes / 1048576.0);
+    } else if (downloadState == kDownloadComplete) {
+        percent = 100;
+        std::snprintf(status, sizeof(status), "DOWNLOAD CONCLUIDO");
+    } else if (downloadState == kDownloadFailed) {
+        const int httpStatus = gDownloadHttpStatus.load();
+        const uint32_t sslError = gDownloadSslError.load();
+        const int apiError = gDownloadApiError.load(), netErrno = gDownloadNetErrno.load();
+        const int localError = gDownloadError.load();
+        if (sslError != 0)
+            std::snprintf(status, sizeof(status), "TLS 0x%08X  -  CONFIRA DATA E HORA DO CONSOLE",
+                static_cast<unsigned int>(sslError));
+        else if (localError == 21)
+            std::snprintf(status, sizeof(status), "REDIRECT HTTP NAO ATIVADO  0x%08X",
+                static_cast<unsigned int>(apiError));
+        else if (httpStatus >= 300 && httpStatus < 400)
+            std::snprintf(status, sizeof(status), "REDIRECT HTTP %d NAO CONCLUIDO", httpStatus);
+        else if (httpStatus != 0)
+            std::snprintf(status, sizeof(status), "HTTP %d  -  PACOTE INDISPONIVEL", httpStatus);
+        else if (apiError != 0 && netErrno >= 0)
+            std::snprintf(status, sizeof(status), "HTTP 0x%08X  /  REDE %d",
+                static_cast<unsigned int>(apiError), netErrno);
+        else if (apiError != 0)
+            std::snprintf(status, sizeof(status), "HTTP 0x%08X",
+                static_cast<unsigned int>(apiError));
+        else
+            std::snprintf(status, sizeof(status), "FALHA LOCAL %d", gDownloadError.load());
+    } else if (downloadState == kDownloadCancelled) {
+        std::snprintf(status, sizeof(status), "DOWNLOAD CANCELADO  -  X PARA TENTAR DE NOVO");
+    } else std::snprintf(status, sizeof(status), "PRONTO PARA BAIXAR");
+
+    drawText(scene, status, 1248, 474, 1,
+        downloadState == kDownloadFailed ? amber :
+        downloadState == kDownloadComplete ? mint : white);
+    drawRoundedRect(scene, 1248, 500, 556, 10, 5, panelHi);
+    if (percent > 0)
+        drawRoundedRect(scene, 1248, 500, (556 * percent) / 100, 10, 5,
+            downloadState == kDownloadFailed ? amber : mint);
+
+    const char* action = "X  BAIXAR PACOTE";
+    Color actionColor = {24, 72, 93};
+    if (downloadState == kDownloadRunning) {
+        action = "O  CANCELAR DOWNLOAD"; actionColor = {67, 46, 36};
+    } else if (downloadState == kDownloadComplete) {
+        action = "O  FECHAR DETALHES"; actionColor = {24, 53, 62};
+    } else if (downloadState == kDownloadFailed || downloadState == kDownloadCancelled) {
+        action = "X  TENTAR NOVAMENTE";
+    }
+    drawRoundedRect(scene, 1248, 524, 556, 60, 16, actionColor);
+    drawRoundedRect(scene, 1248, 524, 4, 60, 2,
+        downloadState == kDownloadRunning ? amber : cyan);
+    drawText(scene, action, 1294, 542, 2,
+        downloadState == kDownloadRunning ? amber : white);
+    drawText(scene, "SALVO EM  /DATA/AURORA/DOWNLOADS", 1248, 592, 1, muted);
+
+    drawRoundedRect(scene, 64, 642, 1120, 304, 24, panel);
+    drawText(scene, "SOBRE O PROJETO", 92, 668, 4, white);
+    drawWrappedText(scene, item.description, 96, 730, 1052, 2, muted, 3);
+    drawText(scene, "REPOSITORIO OFICIAL", 96, 842, 1, {112, 133, 163});
+    drawText(scene, item.repository, 96, 866, 1, cyan);
+    drawText(scene, "VERSAO", 96, 900, 1, {112, 133, 163});
+    drawText(scene, item.version, 96, 922, 2, white);
+    drawText(scene, "LICENCA", 292, 900, 1, {112, 133, 163});
+    drawText(scene, item.license, 292, 922, 2, accent);
+
+    drawRoundedRect(scene, 1204, 642, 652, 304, 24, panel);
+    drawText(scene, "MAIS NA AURORA", 1230, 668, 3, white);
+    int shown = 0;
+    for (int row = 0; row < catalogCountForPage(state.page) && shown < 2; ++row) {
+        const int otherIndex = catalogIndexForPage(state.page, row);
+        if (otherIndex < 0 || otherIndex == itemIndex) continue;
+        const CatalogEntry& other = kCatalogItems[otherIndex];
+        const int x = shown == 0 ? 1230 : 1540;
+        drawRoundedRect(scene, x, 706, 296, 224, 16, panelHi);
+        drawProductArtwork(scene, other, otherIndex, x + 8, 714, 280, 132);
+        drawText(scene, other.name, x + 14, 858, 2, white);
+        drawText(scene, other.category, x + 16, 896, 1, muted);
+        ++shown;
+    }
+    drawFooter(scene, state);
 }
+
 void renderStore(Scene2D* scene, const StoreState& state) {
     scene->FrameBufferFill(bg);
     drawHeader(scene, state);
-    drawHero(scene, state);
-    if (state.page == 0) {
-        drawText(scene, "EXPLORE POR CATEGORIA", 66, 616, 3, white);
-        drawText(scene, "5 PROJETOS / FONTES OFICIAIS", 1330, 622, 2, muted);
-        const int x[3] = {64, 674, 1284};
-        for (int i = 0; i < 3; ++i)
-            drawCategoryCard(scene, x[i], 674, 572, i, state.focusCards && state.card == i);
-    } else if (state.page == 1) {
-        drawEmptyPage(scene, state);
-    } else {
+    if (state.page >= 2) {
         drawCatalogPage(scene, state);
+    } else {
+        drawHero(scene, state);
+        if (state.page == 0) {
+            drawText(scene, "EXPLORE POR CATEGORIA", 66, 616, 3, white);
+            drawText(scene, "5 PROJETOS / FONTES OFICIAIS", 1330, 622, 2, muted);
+            const int x[3] = {64, 674, 1284};
+            for (int i = 0; i < 3; ++i)
+                drawCategoryCard(scene, x[i], 674, 572, i, state.focusCards && state.card == i);
+        } else {
+            drawEmptyPage(scene, state);
+        }
+        drawFooter(scene, state);
     }
-    drawFooter(scene);
     if (state.dialogOpen) drawDialog(scene, state);
 }
 
@@ -544,8 +679,16 @@ int32_t verifyDownloadCertificate(int32_t sslContext, uint32_t verifyError,
     (void)certificates;
     (void)certificateCount;
     (void)userData;
-    // Fail closed: only proceed when the PS4 TLS stack reports a valid chain.
+    gDownloadSslError.store(verifyError);
+    // Keep certificate validation enabled; expose the reason when it fails.
     return verifyError == 0 ? 1 : 0;
+}
+
+void captureHttpError(int requestId, int apiError) {
+    gDownloadApiError.store(apiError);
+    int32_t netErrno = -1;
+    if (requestId >= 0 && sceHttpGetLastErrno(requestId, &netErrno) == 0)
+        gDownloadNetErrno.store(netErrno);
 }
 
 bool ensureDirectory(const char* path) {
@@ -609,7 +752,7 @@ void downloadPackageWorker(int itemIndex) {
         errorCode = 7;
         goto download_cleanup;
     }
-    templateId = sceHttpCreateTemplate(httpContext, "AuroraStore/01.07 PS4",
+    templateId = sceHttpCreateTemplate(httpContext, "AuroraStore/01.08 PS4",
         ORBIS_HTTP_VERSION_1_1, 1);
     if (templateId < 0) {
         errorCode = 8;
@@ -624,29 +767,47 @@ void downloadPackageWorker(int itemIndex) {
         SetAutoRedirectFunction setAutoRedirect =
             reinterpret_cast<SetAutoRedirectFunction>(&sceHttpSetAutoRedirect);
         setAutoRedirect(templateId, 1);
+        int32_t redirectState = 0;
+        const int32_t redirectQuery = sceHttpGetAutoRedirect(templateId, &redirectState);
+        if (redirectQuery < 0 || redirectState != 1) {
+            gDownloadApiError.store(redirectQuery < 0 ? redirectQuery : -1);
+            errorCode = 21;
+            goto download_cleanup;
+        }
     }
     sceHttpSetConnectTimeOut(templateId, 30 * 1000 * 1000);
     sceHttpSetResolveTimeOut(templateId, 30 * 1000 * 1000);
 
     connectionId = sceHttpCreateConnectionWithURL(templateId, item.downloadUrl, 1);
     if (connectionId < 0) {
+        gDownloadApiError.store(connectionId);
         errorCode = 10;
         goto download_cleanup;
     }
     requestId = sceHttpCreateRequestWithURL(connectionId, ORBIS_METHOD_GET,
         item.downloadUrl, 0);
     if (requestId < 0) {
+        gDownloadApiError.store(requestId);
         errorCode = 11;
         goto download_cleanup;
     }
-    if (sceHttpSendRequest(requestId, nullptr, 0) < 0) {
+    const int32_t sendResult = sceHttpSendRequest(requestId, nullptr, 0);
+    if (sendResult < 0) {
+        captureHttpError(requestId, sendResult);
         errorCode = 12;
         goto download_cleanup;
     }
     {
         int32_t statusCode = 0;
-        if (sceHttpGetStatusCode(requestId, &statusCode) < 0 || statusCode != 200) {
-            errorCode = statusCode > 0 ? 1000 + statusCode : 13;
+        const int32_t statusResult = sceHttpGetStatusCode(requestId, &statusCode);
+        if (statusResult < 0) {
+            captureHttpError(requestId, statusResult);
+            errorCode = 13;
+            goto download_cleanup;
+        }
+        gDownloadHttpStatus.store(statusCode);
+        if (statusCode != 200) {
+            errorCode = 1000 + statusCode;
             goto download_cleanup;
         }
         int contentLengthType = ORBIS_HTTP_CONTENTLEN_NOT_FOUND;
@@ -676,6 +837,7 @@ void downloadPackageWorker(int itemIndex) {
         }
         const int readCount = sceHttpReadData(requestId, buffer, 64 * 1024);
         if (readCount < 0) {
+            captureHttpError(requestId, readCount);
             errorCode = 16;
             break;
         }
@@ -735,6 +897,10 @@ void beginDownload(int itemIndex) {
     gDownloadBytes.store(0);
     gDownloadTotal.store(0);
     gDownloadError.store(0);
+    gDownloadApiError.store(0);
+    gDownloadNetErrno.store(-1);
+    gDownloadHttpStatus.store(0);
+    gDownloadSslError.store(0);
     gCancelDownload.store(false);
     gDownloadState.store(kDownloadRunning);
     try {
@@ -749,7 +915,7 @@ void beginDownload(int itemIndex) {
 
 int main(void) {
     setvbuf(stdout, nullptr, _IONBF, 0);
-    DEBUGLOG << "Aurora Store frontend 01.07";
+    DEBUGLOG << "Aurora Store frontend 01.08";
 
     Scene2D* screen = new Scene2D(kWidth, kHeight, 4);
     if (!screen->Init(0x1000000, 2)) {
@@ -829,12 +995,28 @@ int main(void) {
                 }
             }
             else if (!state.dialogOpen && (pressed & kLeft)) {
-                if (state.page == 0 && state.focusCards) { state.card = (state.card + 2) % 3; changed = true; }
-                else if (state.page != 0) { cyclePage(state, -1); changed = true; }
+                if (state.page == 0 && state.focusCards) {
+                    state.card = (state.card + 2) % 3;
+                    changed = true;
+                } else if (state.page >= 2) {
+                    const int count = catalogCountForPage(state.page);
+                    if (count > 0) { state.card = (state.card + count - 1) % count; changed = true; }
+                } else if (state.page == 1) {
+                    cyclePage(state, -1);
+                    changed = true;
+                }
             }
             else if (!state.dialogOpen && (pressed & kRight)) {
-                if (state.page == 0 && state.focusCards) { state.card = (state.card + 1) % 3; changed = true; }
-                else if (state.page != 0) { cyclePage(state, 1); changed = true; }
+                if (state.page == 0 && state.focusCards) {
+                    state.card = (state.card + 1) % 3;
+                    changed = true;
+                } else if (state.page >= 2) {
+                    const int count = catalogCountForPage(state.page);
+                    if (count > 0) { state.card = (state.card + 1) % count; changed = true; }
+                } else if (state.page == 1) {
+                    cyclePage(state, 1);
+                    changed = true;
+                }
             }
             else if (!state.dialogOpen && (pressed & kCross)) {
                 if (state.page == 0 && state.focusCards) {

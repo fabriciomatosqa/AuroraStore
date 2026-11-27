@@ -278,6 +278,76 @@ void Scene2D::DrawRectangle(int x, int y, int w, int h, Color color)
 	}
 }
 
+namespace {
+void blendScenePixel(uint32_t& dst, Color color, uint8_t alpha)
+{
+	if (!alpha) return;
+	const uint8_t inv = 255 - alpha;
+	const uint8_t r = static_cast<uint8_t>((alpha * color.r + inv * ((dst >> 16) & 255) + 127) / 255);
+	const uint8_t g = static_cast<uint8_t>((alpha * color.g + inv * ((dst >> 8) & 255) + 127) / 255);
+	const uint8_t b = static_cast<uint8_t>((alpha * color.b + inv * (dst & 255) + 127) / 255);
+	dst = 0x80000000u | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
+}
+}
+
+void Scene2D::DrawRoundedRectangle(int x, int y, int w, int h, int radius, Color color)
+{
+	if (w <= 0 || h <= 0 || !this->frameBuffers) return;
+	if (radius < 0) radius = 0;
+	if (radius > w / 2) radius = w / 2;
+	if (radius > h / 2) radius = h / 2;
+	if (!radius) { this->DrawRectangle(x, y, w, h, color); return; }
+	this->DrawRectangle(x + radius, y, w - 2 * radius, h, color);
+	this->DrawRectangle(x, y + radius, radius, h - 2 * radius, color);
+	this->DrawRectangle(x + w - radius, y + radius, radius, h - 2 * radius, color);
+
+	uint32_t *pixels = reinterpret_cast<uint32_t *>(this->frameBuffers[this->activeFrameBufferIdx]);
+	const float r = static_cast<float>(radius);
+	for (int cy = 0; cy < 2; ++cy) for (int cx = 0; cx < 2; ++cx)
+	{
+		const int ox = cx ? x + w - radius : x;
+		const int oy = cy ? y + h - radius : y;
+		const float centerX = static_cast<float>(cx ? x + w - radius : x + radius);
+		const float centerY = static_cast<float>(cy ? y + h - radius : y + radius);
+		for (int py = 0; py < radius; ++py) for (int px = 0; px < radius; ++px)
+		{
+			const int tx = ox + px, ty = oy + py;
+			if (tx < 0 || ty < 0 || tx >= this->width || ty >= this->height) continue;
+			int covered = 0;
+			for (int sy = 0; sy < 2; ++sy) for (int sx = 0; sx < 2; ++sx)
+			{
+				const float dx = tx + (sx + 0.5f) * 0.5f - centerX;
+				const float dy = ty + (sy + 0.5f) * 0.5f - centerY;
+				if (dx * dx + dy * dy <= r * r) ++covered;
+			}
+			if (covered)
+				blendScenePixel(pixels[ty * this->width + tx], color,
+					static_cast<uint8_t>((covered * 255 + 2) / 4));
+		}
+	}
+}
+
+void Scene2D::DrawLine(int x0, int y0, int x1, int y1, Color color, int thickness)
+{
+	if (!this->frameBuffers) return;
+	if (thickness < 1) thickness = 1;
+	const int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+	const int sx = x0 < x1 ? 1 : -1;
+	const int dy = y1 > y0 ? y0 - y1 : y1 - y0;
+	const int sy = y0 < y1 ? 1 : -1;
+	int error = dx + dy;
+	const int radius = thickness / 2;
+	for (;;)
+	{
+		this->DrawRoundedRectangle(x0 - radius, y0 - radius, thickness, thickness,
+			radius, color);
+		if (x0 == x1 && y0 == y1) break;
+		const int twice = 2 * error;
+		if (twice >= dy) { error += dy; x0 += sx; }
+		if (twice <= dx) { error += dx; y0 += sy; }
+	}
+}
+
 bool Scene2D::LoadRgbaImage(const char *path, int imageW, int imageH)
 {
 	if (path == NULL || imageW <= 0 || imageH <= 0)

@@ -2,9 +2,9 @@
 
 Projeto homebrew de catalogo e download para PS4.
 
-## Versao 01.07
+## Versao 01.08
 
-A interface usa FreeType com antialias, o logo Aurora original e um renderer nativo otimizado para 1080p. O preenchimento por linha reduz a lentidao durante a navegacao, e as bordas e sombras foram suavizadas.
+A interface usa a fonte Gontserrat com FreeType, capas ilustradas para cada projeto, detalhes em tela cheia e cartoes de recomendacao. As formas e linhas vetoriais recebem antialias, com hierarquia de texto maior para leitura na TV.
 
 O catalogo foi montado a partir do [PKG-Zone para PS4](https://pkg-zone.com/?console=ps4) e aponta para repositorios oficiais dos projetos:
 
@@ -16,14 +16,14 @@ O catalogo foi montado a partir do [PKG-Zone para PS4](https://pkg-zone.com/?con
 
 ## Downloads no PS4
 
-Abra Apps ou Ferramentas, escolha um projeto e pressione **X** para abrir os detalhes. Pressione **X** novamente para baixar o PKG; a tela mostra o progresso, permite cancelar com **O** e confirma quando o arquivo foi salvo. Os pacotes dos quatro primeiros projetos vêm dos releases do GitHub; Itemzflow vem do endpoint de download do PKG-Zone.
+Abra Apps ou Ferramentas, escolha um projeto com as setas e pressione **X** para abrir os detalhes. Pressione **X** novamente para baixar o PKG; a tela mostra o progresso, permite cancelar com **O** e confirma quando o arquivo foi salvo. Se falhar, a tela mostra o codigo HTTP, TLS ou de rede para identificar a causa. Os pacotes dos quatro primeiros projetos vêm dos releases do GitHub; Itemzflow vem do endpoint de download do PKG-Zone.
 
 Os arquivos completos ficam em `/data/aurora/downloads`. O app baixa e valida o arquivo, mas nao inicia a instalacao; use o instalador de pacotes do console para instalar o PKG baixado.
 
 ## Controles
 
 - **L1/R1:** alternar entre Inicio, Jogos, Apps e Ferramentas.
-- **Setas:** navegar pelas categorias e pela lista.
+- **Setas:** navegar pelos cartoes de apps e ferramentas.
 - **X:** abrir detalhes ou iniciar/tentar novamente o download.
 - **O:** voltar, fechar detalhes ou cancelar um download em andamento.
 
