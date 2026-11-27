@@ -1,24 +1,26 @@
 # Aurora Store PS4
 
-Projeto experimental de uma loja nativa para PS4 homebrew.
+Projeto experimental para PS4 homebrew.
 
-## Estado atual
+## Versão 01.03
 
-Esta primeira entrega configura a compilação automatizada de um **pacote de teste (smoke test)** com OpenOrbis. Ainda não é a loja visual final: a interface gráfica, navegação pelo DualShock 4, consulta HTTP dos catálogos e gerenciador de downloads serão implementados e testados em etapas seguintes.
+Esta versão substitui o executável sem interface por uma tela de inicialização visível, usando a classe Scene2D de exemplo do OpenOrbis. Se a tela “TESTE VISUAL: APP ABRIU” aparecer no console, o executável inicializou e conseguiu enviar um quadro para a saída de vídeo.
 
-O catálogo inicial usa um JSON próprio e aceita somente itens cuja distribuição seja autorizada pelo responsável.
+O ícone do pacote agora vem da imagem enviada pelo usuário. O arquivo-fonte codificado em `assets/aurora-icon.png.b64` é decodificado por `tools/generate_icon.py` para `sce_sys/icon0.png`. O workflow valida 512 × 512, PNG, RGB e inclui o caminho no GP4.
+
+**Esta compilação ainda não é uma loja funcional:** catálogo, interface de navegação, conexão HTTP e downloads não estão implementados. A tela serve para diagnosticar a abertura do aplicativo.
 
 ## Compilação
 
-Cada push na branch principal e cada execução manual acionam GitHub Actions. O artefato esperado é publicado como `AuroraStore-PS4`.
+Cada push na branch principal e cada execução manual acionam GitHub Actions. A compilação confirma que o PKG foi criado; ela não consegue validar execução no console. O teste final da tela precisa ser feito no PS4.
 
 ## Estrutura
 
-- `src/main.cpp`: ponto de entrada nativo para validar o runtime.
-- `catalogs/homebrew.json`: formato inicial do catálogo remoto.
+- `src/main.cpp`: tela de inicialização e verificação visual.
+- `src/graphics.cpp`, `src/graphics.h`: renderer 2D de exemplo do OpenOrbis, licenciado sob GPL-3.0; licença em `third_party/OpenOrbis-PS4-Toolchain/LICENSE`.
+- `assets/aurora-icon.png.b64`: PNG original convertido para 512 × 512 RGB e codificado em Base64 para o workflow.
 - `.github/workflows/build.yml`: compilação OpenOrbis.
-- `tools/generate_icon.py`: gera o ícone PNG necessário ao pacote.
 
 ## Compatibilidade
 
-O pacote de teste usa OpenOrbis e precisa ser validado no console. A compilação bem-sucedida, por si só, não garante compatibilidade com todo firmware ou configuração de jailbreak.
+O pacote usa OpenOrbis 0.5.4. A compilação bem-sucedida não garante compatibilidade com cada firmware ou configuração de jailbreak. A versão 01.03 precisa ser instalada e testada no console.
