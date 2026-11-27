@@ -1,5 +1,5 @@
 TITLE       := Aurora Store - PS4
-VERSION     := 01.02
+VERSION     := 01.03
 TITLE_ID    := AURR00001
 CONTENT_ID  := IV0000-AURR00001_00-AURORASTORE00001
 
@@ -10,18 +10,21 @@ LD          := ld.lld
 PKGDIR      := $(TOOLCHAIN)/bin/linux
 INTDIR      := build
 SRC         := src
-OBJS        := $(INTDIR)/main.o
+OBJS        := $(INTDIR)/main.o $(INTDIR)/graphics.o
 
 CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
 CXXFLAGS    := $(CFLAGS) -isystem $(TOOLCHAIN)/include/c++/v1
-LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ $(TOOLCHAIN)/lib/crt1.o
+LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ -lSceVideoOut $(TOOLCHAIN)/lib/crt1.o
 
 all: clean $(CONTENT_ID).pkg
 
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: $(SRC)/main.cpp | $(INTDIR)
+$(INTDIR)/main.o: $(SRC)/main.cpp $(SRC)/graphics.h $(SRC)/log.h | $(INTDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+$(INTDIR)/graphics.o: $(SRC)/graphics.cpp $(SRC)/graphics.h $(SRC)/log.h | $(INTDIR)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 eboot.bin: $(OBJS)
