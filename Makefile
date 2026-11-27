@@ -1,5 +1,5 @@
 TITLE       := Aurora Store - PS4
-VERSION     := 01.03
+VERSION     := 01.04
 TITLE_ID    := AURR00001
 CONTENT_ID  := IV0000-AURR00001_00-AURORASTORE00001
 
@@ -14,7 +14,7 @@ OBJS        := $(INTDIR)/main.o $(INTDIR)/graphics.o
 
 CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
 CXXFLAGS    := $(CFLAGS) -isystem $(TOOLCHAIN)/include/c++/v1
-LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ -lSceVideoOut $(TOOLCHAIN)/lib/crt1.o
+LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lc++ -lSceVideoOut -lScePad -lSceUserService $(TOOLCHAIN)/lib/crt1.o
 
 all: clean $(CONTENT_ID).pkg
 
