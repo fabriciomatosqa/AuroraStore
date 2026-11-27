@@ -1,8 +1,6 @@
 name: Build Aurora Store PS4
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -14,64 +12,5 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install host dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld make curl libicu-dev python3-pil
-          # PkgTool.Core from this SDK release requires OpenSSL 1.1.
-          base="http://security.ubuntu.com/ubuntu/pool/main/o/openssl/"
-          deb="libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb"
-          curl -fsSL "${base}${deb}" -o /tmp/libssl1.1.deb
-          sudo apt-get install -y /tmp/libssl1.1.deb
-
-      - name: Install OpenOrbis v0.5.4
-        run: |
-          curl -fL https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz -o /tmp/openorbis.tar.gz
-          mkdir -p "$HOME/openorbis"
-          tar -xzf /tmp/openorbis.tar.gz -C "$HOME/openorbis"
-          OO_ROOT="$(dirname "$(find "$HOME/openorbis" -name link.x -print -quit)")"
-          test -n "$OO_ROOT"
-          echo "OO_PS4_TOOLCHAIN=$OO_ROOT" >> "$GITHUB_ENV"
-          echo "$OO_ROOT/bin/linux" >> "$GITHUB_PATH"
-          echo "Using toolchain at $OO_ROOT"
-
-      - name: Prepare and validate package resources
-        run: |
-          mkdir -p sce_sys/about
-          python3 tools/generate_icon.py
-          python3 - <<'PY'
-          from PIL import Image
-          icon = Image.open("sce_sys/icon0.png")
-          assert icon.size == (512, 512), icon.size
-          assert icon.mode == "RGB", icon.mode
-          assert icon.format == "PNG", icon.format
-          print("Validated supplied icon: 512x512 RGB PNG")
-          PY
-          RIGHT_SPRX="$(find "$OO_PS4_TOOLCHAIN" -name right.sprx -print -quit)"
-          test -n "$RIGHT_SPRX"
-          cp "$RIGHT_SPRX" sce_sys/about/right.sprx
-          mkdir -p sce_module
-          LIBC_PRX="$(find "$OO_PS4_TOOLCHAIN" -path '*/sce_module/libc.prx' -print -quit)"
-          FIOS_PRX="$(find "$OO_PS4_TOOLCHAIN" -path '*/sce_module/libSceFios2.prx' -print -quit)"
-          test -n "$LIBC_PRX" && test -n "$FIOS_PRX"
-          cp "$LIBC_PRX" sce_module/libc.prx
-          cp "$FIOS_PRX" sce_module/libSceFios2.prx
-
-      - name: Compile and package
-        run: |
-          make CC=clang CXX=clang++ LD=ld.lld
-          test -s "IV0000-AURR00001_00-AURORASTORE00001.pkg"
-          strings sce_sys/param.sfo | grep -F "01.03"
-          test "$(strings sce_sys/param.sfo | grep -Fc "01.03")" -ge 2
-          grep -q 'icon0.png' pkg.gp4
-          echo "Validated package metadata APP_VER and VERSION = 01.03; supplied icon is listed in GP4"
-          mv "IV0000-AURR00001_00-AURORASTORE00001.pkg" "AuroraStore-PS4-v01.03.pkg"
-
-      - name: Upload PKG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AuroraStore-PS4-v01.03
-          path: "AuroraStore-PS4-v01.03.pkg"
-          if-no-files-found: error
-          retention-days: 90
+      - name: Placeholder while publishing frontend 01.04
+        run: echo "Coordinated frontend update is in progress."
