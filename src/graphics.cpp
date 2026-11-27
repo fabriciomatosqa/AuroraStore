@@ -10,6 +10,10 @@
 
 Scene2D::Scene2D(int w, int h, int pixelDepth)
 {
+#ifdef GRAPHICS_USES_FONT
+	this->fontReady = false;
+	this->ftLib = NULL;
+#endif
 	this->width = w;
 	this->height = h;
 	this->depth = pixelDepth;
@@ -31,22 +35,20 @@ bool Scene2D::Init(size_t memSize, int numFrameBuffers)
 	}
 	
 #ifdef GRAPHICS_USES_FONT
-	// Load freetype
+	// FreeType improves text rendering, but video output must still start if
+	// the optional system module is missing on a particular firmware.
 	rc = sceSysmoduleLoadModule(ORBIS_SYSMODULE_FREETYPE_OL);
-
 	if (rc < 0)
 	{
-		DEBUGLOG << "Failed to load freetype: " << std::string(strerror(errno));
-		return false;
+		DEBUGLOG << "FreeType system module unavailable: " << std::string(strerror(errno));
 	}
-
-	// Initialize freetype
-	rc = FT_Init_FreeType(&this->ftLib);
-
-	if (rc != 0)
+	else
 	{
-		DEBUGLOG << "Failed to initialize freetype: " << std::string(strerror(errno));
-		return false;
+		rc = FT_Init_FreeType(&this->ftLib);
+		if (rc != 0)
+			DEBUGLOG << "FreeType initialization failed: " << std::string(strerror(errno));
+		else
+			this->fontReady = true;
 	}
 #endif
 	
@@ -209,19 +211,14 @@ void Scene2D::FrameBufferClear()
 #ifdef GRAPHICS_USES_FONT
 bool Scene2D::InitFont(FT_Face *face, const char *fontPath, int fontSize)
 {
-	int rc;
-	
-	rc = FT_New_Face(this->ftLib, fontPath, 0, face);
-	
-	if(rc < 0)
+	if (!this->fontReady || face == NULL)
 		return false;
 
-	rc = FT_Set_Pixel_Sizes(*face, 0, fontSize);
-	
-	if(rc < 0)
+	const int rc = FT_New_Face(this->ftLib, fontPath, 0, face);
+	if (rc != 0)
 		return false;
-	
-	return true;
+
+	return FT_Set_Pixel_Sizes(*face, 0, fontSize) == 0;
 }
 #endif
 
@@ -259,75 +256,72 @@ void Scene2D::DrawRectangle(int x, int y, int w, int h, Color color)
 #ifdef GRAPHICS_USES_FONT
 void Scene2D::DrawText(char *txt, FT_Face face, int startX, int startY, Color bgColor, Color fgColor)
 {
-	int rc;
+	if (!this->fontReady || txt == NULL || face == NULL)
+		return;
+
 	int xOffset = 0;
 	int yOffset = 0;
-	
-	// Get the glyph slot for bitmap and font metrics
+	const int textLength = strlen(txt);
 	FT_GlyphSlot slot = face->glyph;
-	
-	// Iterate each character of the text to write to the screen
-	for(int n = 0; n < strlen(txt); n++)
+
+	for (int n = 0; n < textLength; ++n)
 	{
-		FT_UInt glyph_index;
+		const unsigned char character = static_cast<unsigned char>(txt[n]);
+		if (character == '\n')
+		{
+			xOffset = 0;
+			yOffset += static_cast<int>(face->size->metrics.height >> 6);
+			continue;
+		}
 
-        // Get the glyph for the ASCII code
-        glyph_index = FT_Get_Char_Index(face, txt[n]);
+		const FT_UInt glyphIndex = FT_Get_Char_Index(face, character);
+		if (FT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT) != 0 ||
+			FT_Render_Glyph(slot, ft_render_mode_normal) != 0)
+			continue;
 
-        // Load and render in 8-bit color
-        rc = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
+		const int pitch = slot->bitmap.pitch;
+		for (int yPos = 0; yPos < slot->bitmap.rows; ++yPos)
+		{
+			const unsigned char *row = pitch >= 0
+				? slot->bitmap.buffer + yPos * pitch
+				: slot->bitmap.buffer + (slot->bitmap.rows - 1 - yPos) * -pitch;
+			for (int xPos = 0; xPos < slot->bitmap.width; ++xPos)
+			{
+				const uint8_t alpha = row[xPos];
+				if (alpha == 0)
+					continue;
 
-        if (rc)
-            continue;
+				const int x = startX + xOffset + xPos + slot->bitmap_left;
+				const int y = startY + yOffset + yPos - slot->bitmap_top;
+				if (x < 0 || y < 0 || x >= this->width || y >= this->height)
+					continue;
 
-        rc = FT_Render_Glyph(slot, ft_render_mode_normal);
-
-        if (rc)
-            continue;
-
-        // If we get a newline, increment the y offset, reset the x offset, and skip to the next character
-        if (txt[n] == '\n')
-        {
-            xOffset = 0;
-            yOffset += slot->bitmap.width * 2;
-
-            continue;
-        }
-
-        // Parse and write the bitmap to the frame buffer
-        for (int yPos = 0; yPos < slot->bitmap.rows; yPos++)
-        {
-            for (int xPos = 0; xPos < slot->bitmap.width; xPos++)
-            {
-                // Decode the 8-bit bitmap
-                char pixel = slot->bitmap.buffer[(yPos * slot->bitmap.width) + xPos];
-
-                // Get new pixel coordinates to account for the character position and baseline, as well as newlines
-                int x = startX + xPos + xOffset + slot->bitmap_left;
-                int y = startY + yPos + yOffset - slot->bitmap_top;
-
-                // Linearly interpolate between the foreground and background for smoother rendering
-				uint8_t r = (pixel * fgColor.r) / 255;
-				uint8_t g = (pixel * fgColor.g) / 255;
-				uint8_t b = (pixel * fgColor.b) / 255;
-
-                // Create new color struct with lerp'd values
-                Color finalColor = { r, g, b };
-
-                // We need to do bounds checking before commiting the pixel write due to our transformations, or we
-                // could write out-of-bounds of the frame buffer
-                if (x < 0 || y < 0 || x >= this->width || y >= this->height)
-                    continue;
-
-                // If the pixel in the bitmap isn't blank, we'll draw it
-                if(pixel != 0x00)
-                    this->DrawPixel(x, y, finalColor);
-            }
-        }
-
-        // Increment x offset for the next character
-        xOffset += slot->advance.x >> 6;
-    }
+				// Blend against the pixel already on screen so edges stay smooth
+				// on any surface, including gradients and highlighted cards.
+				const int pixel = y * this->width + x;
+				const uint32_t background =
+					reinterpret_cast<uint32_t *>(this->frameBuffers[this->activeFrameBufferIdx])[pixel];
+				Color under = bgColor;
+				if (background & 0x80000000)
+			{
+					under.r = static_cast<uint8_t>((background >> 16) & 0xff);
+					under.g = static_cast<uint8_t>((background >> 8) & 0xff);
+					under.b = static_cast<uint8_t>(background & 0xff);
+				}
+				const uint8_t inverse = 255 - alpha;
+				const Color finalColor = {
+					static_cast<uint8_t>((alpha * fgColor.r + inverse * under.r + 127) / 255),
+					static_cast<uint8_t>((alpha * fgColor.g + inverse * under.g + 127) / 255),
+					static_cast<uint8_t>((alpha * fgColor.b + inverse * under.b + 127) / 255)
+				};
+				this->DrawPixel(x, y, finalColor);
+			}
+		}
+		xOffset += slot->advance.x >> 6;
+	}
 }
 #endif
+
+
+
 
